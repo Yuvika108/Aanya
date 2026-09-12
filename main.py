@@ -45,6 +45,8 @@ APP_COMMANDS = [
     (["open music", "play music"],     "Spotify",  "https://open.spotify.com/"),
 ]
 
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+
 WAKE_VARIANTS = {"aanya", "anya", "hanya", "tanya", "anna", "ana", "onia", "nia"}
 DATA_DIR = os.path.expanduser("~/.aanya")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -66,17 +68,23 @@ class AanyaEngine:
     """
 
     def __init__(self):
-        self.client = genai.Client(api_key=gemini_key)
         self.system_instruction = (
             "You are Aanya, a helpful, smart, and concise AI assistant made by Yuvi. "
             "Your responses are spoken aloud, so keep them natural and brief."
         )
-        self.chat_session = self.client.chats.create(
-            model="gemini-1.5-flash",
-            config=types.GenerateContentConfig(
-                system_instruction=self.system_instruction
-            )
-        )
+        self.client = None
+        self.chat_session = None
+        if gemini_key:
+            try:
+                self.client = genai.Client(api_key=gemini_key)
+                self.chat_session = self.client.chats.create(
+                    model=DEFAULT_MODEL,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_instruction
+                    )
+                )
+            except Exception as e:
+                print(f"[Warning] Failed to initialize Gemini client: {e}")
 
         self.recognizer = sr.Recognizer()
         self.recognizer.pause_threshold = 1
@@ -133,6 +141,10 @@ class AanyaEngine:
     # ── Gemini ────────────────────────────────
 
     def chat(self, query: str) -> str:
+        if not self.chat_session:
+            self._emit_status("✗", "NO KEY", "Set gemini_key in config.py")
+            self.say("Please configure your Gemini API key in config.py to chat.")
+            return ""
         self._emit_state("thinking")
         self._emit_status("💬", "THINKING", "Contacting Gemini...")
         try:
@@ -144,7 +156,7 @@ class AanyaEngine:
                 # We reset and seed the last 10 messages if it gets too long
                 recent = history[-10:]
                 self.chat_session = self.client.chats.create(
-                    model="gemini-1.5-flash",
+                    model=DEFAULT_MODEL,
                     history=recent,
                     config=types.GenerateContentConfig(system_instruction=self.system_instruction)
                 )
@@ -156,12 +168,16 @@ class AanyaEngine:
             return ""
 
     def ai_generate(self, prompt: str):
+        if not self.client:
+            self._emit_status("✗", "NO KEY", "Set gemini_key in config.py")
+            self.say("Please configure your Gemini API key in config.py.")
+            return
         self.say("Generating response, please wait...")
         self._emit_state("thinking")
         self._emit_status("⚙", "AI MODE", "Generating content...")
         try:
             response = self.client.models.generate_content(
-                model="gemini-1.5-flash",
+                model=DEFAULT_MODEL,
                 contents=prompt
             )
             reply = response.text
@@ -181,8 +197,11 @@ class AanyaEngine:
             self.say("I encountered an error while generating the response.")
 
     def reset_chat(self):
+        if not self.client:
+            self._emit_status("✗", "NO KEY", "Set gemini_key in config.py")
+            return
         self.chat_session = self.client.chats.create(
-            model="gemini-1.5-flash",
+            model=DEFAULT_MODEL,
             config=types.GenerateContentConfig(system_instruction=self.system_instruction)
         )
         self._emit_status("🔄", "RESET", "Chat history cleared.")

@@ -3,4 +3,4 @@ venv
 Openai
 *.pyc
 .env
-config.pyconfig.py
+config.py

@@ -515,4 +515,7 @@ class AanyaApp(ctk.CTk):
 
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    AanyaApp().mainloop()
+    print("[Aanya] Starting desktop voice assistant GUI...", flush=True)
+    app = AanyaApp()
+    print("[Aanya] Application window is active. Press Ctrl+C in terminal or close window to exit.", flush=True)
+    app.mainloop()

@@ -26,14 +26,13 @@ Aanya is a macOS desktop AI voice assistant built with Python, CustomTkinter, Ge
 Install dependencies using pip:
 
 ```bash
-pip install customtkinter pillow SpeechRecognition google-genai openai
+pip install -r requirements.txt
 ```
 
-Additional macOS requirements:
-
-- Python 3.11+ recommended
-- Microphone support for `SpeechRecognition`
-- `PyAudio` or another supported audio backend if required by `SpeechRecognition`
+Audio & Microphone support:
+- Uses `sounddevice` with pre-compiled wheels (no PortAudio C-compilation or system header issues on cloud deployments)
+- Fully compatible with `SpeechRecognition` via raw PCM `AudioData`
+- Cross-platform text-to-speech fallback (macOS `say`, cloud/Linux fallback)
 
 ## Configuration
 

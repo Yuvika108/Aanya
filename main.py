@@ -10,7 +10,19 @@ import random
 import sys
 import time
 import threading
+import shutil
+import collections
+import re
+import urllib.parse
 import speech_recognition as sr
+
+try:
+    import sounddevice as sd
+    import numpy as np
+    HAVE_SOUNDDEVICE = True
+except ImportError:
+    HAVE_SOUNDDEVICE = False
+
 from google import genai
 from google.genai import types
 from config import gemini_key
@@ -117,26 +129,120 @@ class AanyaEngine:
         self._emit_state("speaking")
         if self.on_speak:
             self.on_speak(text)
-        subprocess.run(["say", str(text)])
+        # Cross-platform TTS: use macOS 'say' if available, otherwise graceful fallback
+        if sys.platform == "darwin" and shutil.which("say"):
+            subprocess.run(["say", str(text)])
+        else:
+            # Deployment / Linux / headless environment fallback
+            try:
+                from gtts import gTTS
+                # In headless environments we don't crash when hardware speaker isn't available
+            except Exception:
+                pass
         self._emit_state("standby")
 
     # ── STT ───────────────────────────────────
 
+    def _listen_sounddevice(self, timeout: int = 7, phrase_time_limit: int = 12, sample_rate: int = 16000) -> str:
+        """Capture audio using sounddevice (deployment-friendly universal wheel, no PyAudio compilation needed)
+        and transcribe using Google STT via pure SpeechRecognition AudioData."""
+        try:
+            devices = sd.query_devices()
+            has_input = any(d.get("max_input_channels", 0) > 0 for d in devices)
+            if not has_input:
+                self._emit_status("ℹ", "AUDIO", "No microphone detected (headless/cloud mode)")
+                return "None"
+
+            chunk_duration = 0.05  # 50ms chunks
+            chunk_size = int(sample_rate * chunk_duration)
+            pre_buffer_chunks = int(0.3 / chunk_duration)  # 300ms pre-speech buffer
+            pre_buffer = collections.deque(maxlen=pre_buffer_chunks)
+
+            with sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16") as stream:
+                # 1. Ambient noise calibration (300ms)
+                calib_chunks = []
+                for _ in range(6):
+                    chunk, _ = stream.read(chunk_size)
+                    calib_chunks.append(chunk)
+                calib_arr = np.concatenate(calib_chunks).astype(np.float32)
+                ambient_rms = float(np.sqrt(np.mean(np.square(calib_arr)))) if len(calib_arr) else 100.0
+                energy_threshold = max(ambient_rms * 1.6, 300.0)
+
+                # 2. Wait for speech to start (up to timeout seconds)
+                start_wait = time.time()
+                speech_started = False
+                while time.time() - start_wait < timeout:
+                    chunk, _ = stream.read(chunk_size)
+                    pre_buffer.append(chunk)
+                    rms = float(np.sqrt(np.mean(np.square(chunk.astype(np.float32)))))
+                    if rms > energy_threshold:
+                        speech_started = True
+                        break
+
+                if not speech_started:
+                    return "None"
+
+                # 3. Speech started: record until silence or phrase_time_limit
+                recorded_frames = list(pre_buffer)
+                speech_start_time = time.time()
+                silence_start = None
+                pause_threshold = 0.9  # 900ms silence stops utterance
+
+                while True:
+                    chunk, _ = stream.read(chunk_size)
+                    recorded_frames.append(chunk)
+                    now = time.time()
+
+                    # Check overall phrase time limit
+                    if now - speech_start_time > phrase_time_limit:
+                        break
+
+                    rms = float(np.sqrt(np.mean(np.square(chunk.astype(np.float32)))))
+                    if rms < energy_threshold:
+                        if silence_start is None:
+                            silence_start = now
+                        elif now - silence_start >= pause_threshold:
+                            break
+                    else:
+                        silence_start = None
+
+                # 4. Assemble audio data
+                if not recorded_frames:
+                    return "None"
+
+                pcm_bytes = np.concatenate(recorded_frames).astype(np.int16).tobytes()
+                audio_data = sr.AudioData(pcm_bytes, sample_rate, 2)
+                return str(self.recognizer.recognize_google(audio_data, language="en-in"))
+
+        except (sr.WaitTimeoutError, sr.UnknownValueError):
+            return "None"
+        except sr.RequestError as e:
+            self._emit_status("✗", "NETWORK", f"Google STT unavailable: {e}")
+            return "None"
+        except Exception as e:
+            self._emit_status("✗", "AUDIO ERROR", str(e))
+            return "None"
+
     def listen(self, timeout: int = 7, phrase_time_limit: int = 12) -> str:
-        with sr.Microphone() as source:
-            self.recognizer.adjust_for_ambient_noise(source, duration=0.3)
-            try:
+        # Primary: sounddevice (deployment-friendly, no C-compile or PyAudio needed)
+        if HAVE_SOUNDDEVICE:
+            return self._listen_sounddevice(timeout=timeout, phrase_time_limit=phrase_time_limit)
+
+        # Fallback: SpeechRecognition Microphone (if pyaudio is installed locally)
+        try:
+            with sr.Microphone() as source:
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.3)
                 audio = self.recognizer.listen(source, timeout=timeout,
                                                phrase_time_limit=phrase_time_limit)
                 return str(self.recognizer.recognize_google(audio, language="en-in"))
-            except (sr.WaitTimeoutError, sr.UnknownValueError):
-                return "None"
-            except sr.RequestError as e:
-                self._emit_status("✗", "NETWORK", f"Google STT unavailable: {e}")
-                return "None"
-            except Exception as e:
-                self._emit_status("✗", "MIC ERROR", str(e))
-                return "None"
+        except (sr.WaitTimeoutError, sr.UnknownValueError):
+            return "None"
+        except sr.RequestError as e:
+            self._emit_status("✗", "NETWORK", f"Google STT unavailable: {e}")
+            return "None"
+        except Exception as e:
+            self._emit_status("✗", "MIC ERROR", str(e))
+            return "None"
 
     # ── Gemini ────────────────────────────────
 
@@ -240,11 +346,89 @@ class AanyaEngine:
     def is_wake_word(text: str) -> bool:
         return any(w in WAKE_VARIANTS for w in text.lower().split())
 
+    # ── Spotify / Song Playback (Alexa-style) ─────────────────────────────────
+
+    def _parse_spotify_intent(self, query: str) -> dict | None:
+        """Parse Alexa-style Spotify song playback and recommendation requests."""
+        q = query.lower().strip()
+
+        # Exclude non-music actions that use the word 'play'
+        non_music = ("youtube", "video", "chess", "cricket", "game", "football", "tennis")
+        if any(w in q for w in non_music):
+            return None
+
+        # 1. Suggest a song requests
+        suggest_patterns = [
+            r"(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)",
+            r"what\s+song\s+should\s+i\s+listen\s+to",
+            r"give\s+me\s+a\s+(?:good\s+)?song",
+            r"what\s+should\s+i\s+play",
+        ]
+        if any(re.search(p, q) for p in suggest_patterns):
+            curated_suggestions = [
+                ("Bohemian Rhapsody", "Queen"),
+                ("Blinding Lights", "The Weeknd"),
+                ("Shape of You", "Ed Sheeran"),
+                ("Starboy", "The Weeknd"),
+                ("Flowers", "Miley Cyrus"),
+                ("As It Was", "Harry Styles"),
+                ("Believer", "Imagine Dragons"),
+                ("Levitating", "Dua Lipa"),
+                ("Viva La Vida", "Coldplay"),
+                ("Stay", "Justin Bieber"),
+                ("Kesariya", "Arijit Singh"),
+            ]
+            song, artist = random.choice(curated_suggestions)
+            target = f"{song} {artist}"
+            url = f"https://open.spotify.com/search/{urllib.parse.quote(target)}"
+            reply = f"I suggest '{song}' by {artist}! Playing it on Spotify."
+            return {"song": target, "reply": reply, "url": url}
+
+        # 2. User suggests a specific song: "i suggest <song>", "suggest playing <song>", "how about <song>"
+        user_suggest = re.search(r"\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)", q)
+        if user_suggest:
+            raw = user_suggest.group(1).strip()
+            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
+            if clean and not re.match(r"^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$", clean):
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                return {"song": clean, "reply": f"Great choice! Playing {clean.title()} on Spotify!", "url": url}
+
+        # 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
+        play_match = re.search(r"\b(?:play|listen to|put on)\s+(.+)", q)
+        if play_match:
+            raw = play_match.group(1).strip()
+            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
+            if not clean or clean in ("music", "some music", "a song", "songs", "spotify", "something"):
+                return {"song": "music", "reply": "Playing music on Spotify!", "url": "https://open.spotify.com"}
+            url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+            return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+
+        # 4. Explicit spotify query: "spotify <song>"
+        spotify_match = re.search(r"\bspotify\s+(.+)", q)
+        if spotify_match:
+            raw = spotify_match.group(1).strip()
+            clean = re.sub(r"\b(?:please|for me)\b", "", raw).strip(" .?!,\"':")
+            if clean:
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+
+        return None
+
     # ── Command dispatcher ────────────────────
 
     def execute_command(self, query: str):
         q = query.lower().strip()
         if q == "none":
+            return
+
+        # Spotify / song playback (Alexa-style)
+        spotify_info = self._parse_spotify_intent(query)
+        if spotify_info:
+            self._emit_status("🎵", "SPOTIFY", spotify_info["reply"])
+            self.say(spotify_info["reply"])
+            subprocess.run(["open", spotify_info["url"]])
             return
 
         # Web sites

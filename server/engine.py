@@ -14,16 +14,18 @@ import re
 import json
 import base64
 import datetime
+import urllib.parse
+import random
 from google import genai
 from google.genai import types
 
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 
 SITES = {
-    "youtube":   "https://www.youtube.com",
-    "wikipedia": "https://www.wikipedia.org",
+    "youtube":   "https://www.youtube.com/user/YUVI09",
+    "whatsapp":  "https://web.whatsapp.com/",
     "google":    "https://www.google.com",
-    "spotify":   "https://open.spotify.com",
+    "spotify":   "https://open.spotify.com/user/31y44saeslws5yvkws4zvkh7njuu",
     "leetcode":  "https://leetcode.com/u/Yuv1ka/",
     "github":    "https://github.com/Yuv1ka/",
 }
@@ -531,6 +533,76 @@ class AanyaEngine:
             return removed
         return None
 
+    # ── Spotify / Song Playback (Alexa-style) ─────────────────────────────────
+
+    def _parse_spotify_intent(self, query: str) -> dict | None:
+        """Parse Alexa-style Spotify song playback and recommendation requests."""
+        q = query.lower().strip()
+
+        # Exclude non-music actions that use the word 'play'
+        non_music = ("youtube", "video", "chess", "cricket", "game", "football", "tennis")
+        if any(w in q for w in non_music):
+            return None
+
+        # 1. Suggest a song requests (e.g. "suggest a song", "suggest any song", "recommend music")
+        suggest_patterns = [
+            r"(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)",
+            r"what\s+song\s+should\s+i\s+listen\s+to",
+            r"give\s+me\s+a\s+(?:good\s+)?song",
+            r"what\s+should\s+i\s+play",
+        ]
+        if any(re.search(p, q) for p in suggest_patterns):
+            curated_suggestions = [
+                ("Bohemian Rhapsody", "Queen"),
+                ("Blinding Lights", "The Weeknd"),
+                ("Shape of You", "Ed Sheeran"),
+                ("Starboy", "The Weeknd"),
+                ("Flowers", "Miley Cyrus"),
+                ("As It Was", "Harry Styles"),
+                ("Believer", "Imagine Dragons"),
+                ("Levitating", "Dua Lipa"),
+                ("Viva La Vida", "Coldplay"),
+                ("Stay", "Justin Bieber"),
+                ("Kesariya", "Arijit Singh"),
+            ]
+            song, artist = random.choice(curated_suggestions)
+            target = f"{song} {artist}"
+            url = f"https://open.spotify.com/search/{urllib.parse.quote(target)}"
+            reply = f"I suggest '{song}' by {artist}! Playing it on Spotify."
+            return {"song": target, "reply": reply, "url": url}
+
+        # 2. User suggests a specific song: "i suggest <song>", "suggest playing <song>", "how about <song>"
+        user_suggest = re.search(r"\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)", q)
+        if user_suggest:
+            raw = user_suggest.group(1).strip()
+            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
+            if clean and not re.match(r"^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$", clean):
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                return {"song": clean, "reply": f"Great choice! Playing {clean.title()} on Spotify!", "url": url}
+
+        # 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
+        play_match = re.search(r"\b(?:play|listen to|put on)\s+(.+)", q)
+        if play_match:
+            raw = play_match.group(1).strip()
+            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
+            if not clean or clean in ("music", "some music", "a song", "songs", "spotify", "something"):
+                return {"song": "music", "reply": "Playing music on Spotify!", "url": "https://open.spotify.com"}
+            url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+            return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+
+        # 4. Explicit spotify query: "spotify <song>"
+        spotify_match = re.search(r"\bspotify\s+(.+)", q)
+        if spotify_match:
+            raw = spotify_match.group(1).strip()
+            clean = re.sub(r"\b(?:please|for me)\b", "", raw).strip(" .?!,\"':")
+            if clean:
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+
+        return None
+
     # ── Command dispatcher ────────────────────────────────────────────────────
 
     def execute_command(self, query: str, attachments: list | None = None) -> dict:
@@ -546,6 +618,16 @@ class AanyaEngine:
 
         # ── Built-in shortcut commands (only if no media attached) ─────────────
         if not has_media:
+            # 0. Alexa-style Spotify song playback and recommendations
+            spotify_info = self._parse_spotify_intent(query)
+            if spotify_info:
+                return {
+                    "reply": spotify_info["reply"],
+                    "action": "open-url",
+                    "action_data": spotify_info["url"],
+                    "status": "done",
+                }
+
             for site, url in SITES.items():
                 if site in q:
                     return {
@@ -636,6 +718,14 @@ class AanyaEngine:
 
         # ── Built-in shortcuts & instant commands ────────────────────────────
         if not has_media:
+            # 0. Alexa-style Spotify song playback and recommendations
+            spotify_info = self._parse_spotify_intent(query)
+            if spotify_info:
+                yield {"type": "meta", "action": "open-url", "action_data": spotify_info["url"]}
+                yield {"type": "token", "token": spotify_info["reply"]}
+                yield {"type": "done", "reply": spotify_info["reply"]}
+                return
+
             # 1. Direct website openers
             for site, url in SITES.items():
                 if site in q:

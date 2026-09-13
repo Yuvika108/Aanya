@@ -803,20 +803,97 @@
     'github':    'https://github.com/Yuv1ka/',
   };
 
+  let _lastSynchronouslyOpenedUrl = null;
+
+  const CURATED_SPOTIFY_SUGGESTIONS = [
+    'Bohemian Rhapsody Queen',
+    'Blinding Lights The Weeknd',
+    'Shape of You Ed Sheeran',
+    'Starboy The Weeknd',
+    'Flowers Miley Cyrus',
+    'As It Was Harry Styles',
+    'Believer Imagine Dragons',
+    'Levitating Dua Lipa',
+    'Viva La Vida Coldplay',
+    'Stay Justin Bieber',
+    'Kesariya Arijit Singh'
+  ];
+
+  function getSpotifySongUrl(rawText) {
+    const q = rawText.toLowerCase().trim();
+
+    // Exclude non-music actions that use the word 'play'
+    const nonMusic = ['youtube', 'video', 'chess', 'cricket', 'game', 'football', 'tennis'];
+    if (nonMusic.some(w => q.includes(w))) return null;
+
+    // 1. Suggest song / music patterns
+    if (/(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)/i.test(q) ||
+        /what\s+song\s+should\s+i\s+listen\s+to/i.test(q) ||
+        /give\s+me\s+a\s+(?:good\s+)?song/i.test(q) ||
+        /what\s+should\s+i\s+play/i.test(q)) {
+      const picked = CURATED_SPOTIFY_SUGGESTIONS[Math.floor(Math.random() * CURATED_SPOTIFY_SUGGESTIONS.length)];
+      return `https://open.spotify.com/search/${encodeURIComponent(picked)}`;
+    }
+
+    // 2. User suggests a specific song: "i suggest <song>", "how about playing <song>", "what about <song>"
+    const userSuggest = q.match(/\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)/i);
+    if (userSuggest) {
+      let clean = userSuggest[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
+                               .replace(/\b(?:please|for me)\b/gi, '')
+                               .trim()
+                               .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+      if (clean && !/^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$/i.test(clean)) {
+        return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+      }
+    }
+
+    // 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
+    const playMatch = q.match(/\b(?:play|listen to|put on)\s+(.+)/i);
+    if (playMatch) {
+      let clean = playMatch[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
+                             .replace(/\b(?:please|for me)\b/gi, '')
+                             .trim()
+                             .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+      if (!clean || /^(?:music|some music|a song|songs|spotify|something)$/i.test(clean)) {
+        return 'https://open.spotify.com';
+      }
+      return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+    }
+
+    // 4. Explicit spotify command: "spotify <song>"
+    const spotifyMatch = q.match(/\bspotify\s+(.+)/i);
+    if (spotifyMatch) {
+      let clean = spotifyMatch[1].replace(/\b(?:please|for me)\b/gi, '').trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+      if (clean) {
+        return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+      }
+    }
+
+    return null;
+  }
+
   async function handleUserQuery(query) {
     const text = query.trim();
     const attachments = [...state.pendingAttachments]; // snapshot before clearing
 
     if (!text && attachments.length === 0) return;
 
-    // ── URL-opener: must fire window.open() HERE, in the direct user-gesture
+    // ── URL & Spotify opener: must fire window.open() HERE, in the direct user-gesture
     //    context, before any async operations — otherwise browsers block it.
     if (text && attachments.length === 0) {
-      const q = text.toLowerCase();
-      for (const [site, url] of Object.entries(AANYA_SITES)) {
-        if (q.includes(site)) {
-          window.open(url, '_blank', 'noopener,noreferrer');
-          break; // only open first match
+      _lastSynchronouslyOpenedUrl = null;
+      const spotifyUrl = getSpotifySongUrl(text);
+      if (spotifyUrl) {
+        _lastSynchronouslyOpenedUrl = spotifyUrl;
+        window.open(spotifyUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        const q = text.toLowerCase();
+        for (const [site, url] of Object.entries(AANYA_SITES)) {
+          if (q.includes(site)) {
+            _lastSynchronouslyOpenedUrl = url;
+            window.open(url, '_blank', 'noopener,noreferrer');
+            break; // only open first match
+          }
         }
       }
     }
@@ -992,7 +1069,8 @@
         }
 
         // Side-effects
-        if (finalAction === 'open-url' && finalData) window.open(finalData, '_blank');
+        if (finalAction === 'open-url' && finalData && finalData !== _lastSynchronouslyOpenedUrl) window.open(finalData, '_blank');
+        _lastSynchronouslyOpenedUrl = null;
         if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
         if (finalAction === 'learned' || Array.isArray(finalData)) loadMemory();
         if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();
@@ -1027,7 +1105,8 @@
       const reply = data.reply || "I didn't receive a response.";
       appendAssistantMessage(reply, data.action, data.action_data);
       speakResponse(reply);
-      if (data.action === 'open-url' && data.action_data) window.open(data.action_data, '_blank');
+      if (data.action === 'open-url' && data.action_data && data.action_data !== _lastSynchronouslyOpenedUrl) window.open(data.action_data, '_blank');
+      _lastSynchronouslyOpenedUrl = null;
       if (data.action === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
       if (data.action === 'learned' || Array.isArray(data.action_data)) loadMemory();
       if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();

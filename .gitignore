@@ -1,6 +1,12 @@
 venv
+.venv
 .idea
 Openai
 *.pyc
+__pycache__/
 .env
 config.py
+build
+dist
+server/data/
+*.mp3

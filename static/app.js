@@ -10,7 +10,7 @@
   // ── State & Config ──────────────────────────────────────────────────────────
   const state = {
     sessionId: localStorage.getItem('aanya_session_id') || 'default',
-    theme: localStorage.getItem('aanya_theme') || 'theme-midnight',
+    theme: localStorage.getItem('aanya_theme') || 'theme-pastel',
     voiceEnabled: localStorage.getItem('aanya_tts_enabled') !== 'false',
     soundFxEnabled: localStorage.getItem('aanya_sound_fx') !== 'false',
     selectedVoiceURI: localStorage.getItem('aanya_voice_uri') || '',
@@ -290,7 +290,7 @@
     if (state.isListening) {
       try {
         recognition.stop();
-      } catch (e) {}
+      } catch (e) { }
       state.isListening = false;
       setState('standby');
     } else {
@@ -382,20 +382,20 @@
   // Pre-unlock speech synthesis on user interaction
   function unlockSpeechSynthesis() {
     if (window.speechSynthesis && window.speechSynthesis.paused) {
-      try { window.speechSynthesis.resume(); } catch (e) {}
+      try { window.speechSynthesis.resume(); } catch (e) { }
     }
   }
 
   // Tracks the currently playing audio
   let _currentAudio = null;
-  let _ttsAbortCtrl  = null;
+  let _ttsAbortCtrl = null;
 
   // ── TTS Sentence Queue ────────────────────────────────────────────────────
   // Seamless concurrent audio playback: as tokens stream in, complete clauses
   // and sentences speak instantly with zero lag and no awkward pauses.
   const _ttsQueue = [];
-  let   _ttsPlaying = false;
-  let   _streamInProgress = false;
+  let _ttsPlaying = false;
+  let _streamInProgress = false;
 
   /**
    * Helper: extract ready sentences or long clauses from a buffer
@@ -480,9 +480,9 @@
       if (window.speechSynthesis) {
         try {
           const utt = new SpeechSynthesisUtterance(text);
-          utt.lang   = 'en-GB';
-          utt.rate   = 1.02;
-          utt.pitch  = 1.0;
+          utt.lang = 'en-GB';
+          utt.rate = 1.02;
+          utt.pitch = 1.0;
           const best = pickBestVoice();
           if (best) utt.voice = best;
 
@@ -495,7 +495,7 @@
             }
           };
 
-          utt.onend   = finish;
+          utt.onend = finish;
           utt.onerror = finish;
 
           // Safety watchdog to prevent browser speech synthesis from hanging
@@ -508,37 +508,37 @@
       }
 
       // 2. Server gTTS fallback (for environments without Web Speech)
-      const ctrl  = new AbortController();
+      const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
 
       fetch('/tts', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text }),
-        signal:  ctrl.signal,
+        body: JSON.stringify({ text }),
+        signal: ctrl.signal,
       })
-      .then((res) => {
-        clearTimeout(timer);
-        if (!res.ok) throw new Error(`TTS status ${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => {
-        const url   = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        _currentAudio = audio;
-        const cleanup = () => {
-          URL.revokeObjectURL(url);
-          _currentAudio = null;
+        .then((res) => {
+          clearTimeout(timer);
+          if (!res.ok) throw new Error(`TTS status ${res.status}`);
+          return res.blob();
+        })
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          _currentAudio = audio;
+          const cleanup = () => {
+            URL.revokeObjectURL(url);
+            _currentAudio = null;
+            resolve();
+          };
+          audio.onended = cleanup;
+          audio.onerror = cleanup;
+          audio.play().catch(cleanup);
+        })
+        .catch(() => {
+          clearTimeout(timer);
           resolve();
-        };
-        audio.onended = cleanup;
-        audio.onerror = cleanup;
-        audio.play().catch(cleanup);
-      })
-      .catch(() => {
-        clearTimeout(timer);
-        resolve();
-      });
+        });
     });
   }
 
@@ -547,11 +547,11 @@
     _ttsQueue.length = 0;
     _ttsPlaying = false;
     if (_currentAudio) {
-      try { _currentAudio.pause(); _currentAudio.src = ''; } catch (e) {}
+      try { _currentAudio.pause(); _currentAudio.src = ''; } catch (e) { }
       _currentAudio = null;
     }
     if (window.speechSynthesis) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
+      try { window.speechSynthesis.cancel(); } catch (e) { }
     }
   }
 
@@ -568,21 +568,21 @@
 
   // ── File Upload Helpers ────────────────────────────────────────────────────
 
-  /** Map a MIME type to a friendly emoji. */
-  function mimeEmoji(mime) {
-    if (mime.startsWith('image/'))  return '🖼️';
-    if (mime.startsWith('video/'))  return '🎬';
-    if (mime.startsWith('audio/'))  return '🎵';
-    if (mime === 'application/pdf') return '📄';
-    if (mime.startsWith('text/'))   return '📝';
-    return '📎';
+  /** Map a MIME type to a clean Bootstrap Icon. */
+  function mimeIcon(mime) {
+    if (mime.startsWith('image/')) return '<i class="bi bi-image"></i>';
+    if (mime.startsWith('video/')) return '<i class="bi bi-camera-video"></i>';
+    if (mime.startsWith('audio/')) return '<i class="bi bi-file-earmark-music"></i>';
+    if (mime === 'application/pdf') return '<i class="bi bi-file-earmark-pdf"></i>';
+    if (mime.startsWith('text/')) return '<i class="bi bi-file-earmark-text"></i>';
+    return '<i class="bi bi-file-earmark"></i>';
   }
 
   /** Read a File object and resolve with a base64 data string (no prefix). */
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload  = () => {
+      reader.onload = () => {
         // result is "data:<mime>;base64,<data>" — we only want the data part
         const b64 = reader.result.split(',')[1];
         resolve(b64);
@@ -612,9 +612,9 @@
       const chip = document.createElement('span');
       chip.className = 'attach-chip';
       chip.innerHTML = `
-        <span class="chip-icon" aria-hidden="true">${mimeEmoji(att.mime_type)}</span>
+        <span class="chip-icon" aria-hidden="true">${mimeIcon(att.mime_type)}</span>
         <span class="chip-name" title="${escapeHTML(att.name)}">${escapeHTML(att.name.slice(0, 22))}${att.name.length > 22 ? '…' : ''}</span>
-        <button type="button" class="chip-remove" aria-label="Remove ${escapeHTML(att.name)}" data-idx="${idx}">×</button>
+        <button type="button" class="chip-remove" aria-label="Remove ${escapeHTML(att.name)}" data-idx="${idx}"><i class="bi bi-x"></i></button>
       `;
       chip.querySelector('.chip-remove').addEventListener('click', () => {
         state.pendingAttachments.splice(idx, 1);
@@ -627,7 +627,7 @@
   /** Process File objects from input or drag-drop into state.pendingAttachments. */
   async function processFiles(files) {
     const MAX_FILES = 10;
-    const MAX_MB    = 20;
+    const MAX_MB = 20;
 
     for (const file of Array.from(files).slice(0, MAX_FILES)) {
       if (file.size > MAX_MB * 1024 * 1024) {
@@ -637,9 +637,9 @@
       try {
         const b64 = await fileToBase64(file);
         state.pendingAttachments.push({
-          name:      file.name,
+          name: file.name,
           mime_type: file.type || 'application/octet-stream',
-          data_b64:  b64,
+          data_b64: b64,
           // For image previews in the user card
           objectUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
         });
@@ -664,7 +664,7 @@
         .join('');
       const files = attachments
         .filter(a => !a.objectUrl)
-        .map(a => `<span class="card-attachment-file">${mimeEmoji(a.mime_type)} ${escapeHTML(a.name)}</span>`)
+        .map(a => `<span class="card-attachment-file">${mimeIcon(a.mime_type)} ${escapeHTML(a.name)}</span>`)
         .join('');
       if (thumbs || files) {
         attHTML = `<div class="card-attachments">${thumbs}${files}</div>`;
@@ -682,7 +682,7 @@
           <p>${escapeHTML(text)}</p>
         </div>
       </div>
-      <div class="card-avatar" aria-hidden="true">U</div>
+      <div class="card-avatar" aria-hidden="true"><i class="bi bi-person-fill"></i></div>
     `;
     DOM.chatStream.appendChild(card);
     card.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -696,7 +696,7 @@
     if (action === 'open-url' && actionData) {
       actionHTML = `
         <a href="${actionData}" target="_blank" rel="noopener noreferrer" class="card-action-badge">
-          <span>↗ Open Link:</span> <strong>${actionData}</strong>
+          <i class="bi bi-box-arrow-up-right"></i> <span>Open:</span> <strong>${actionData}</strong>
         </a>
       `;
     }
@@ -705,13 +705,13 @@
     if (action === 'learned' && Array.isArray(actionData) && actionData.length > 0) {
       learnedHTML = `
         <div class="learned-pills" aria-label="Learned insights">
-          ${actionData.map(item => `<span class="learned-pill">💡 Learned: ${escapeHTML(item)}</span>`).join('')}
+          ${actionData.map(item => `<span class="learned-pill"><i class="bi bi-lightbulb"></i> Learned: ${escapeHTML(item)}</span>`).join('')}
         </div>
       `;
     }
 
     card.innerHTML = `
-      <div class="card-avatar" aria-hidden="true">A</div>
+      <div class="card-avatar" aria-hidden="true"><i class="bi bi-stars"></i></div>
       <div class="card-body">
         <header class="card-header">
           <span class="card-author">Aanya</span>
@@ -722,8 +722,8 @@
           ${actionHTML}
           ${learnedHTML}
           <div class="card-feedback-bar">
-            <button type="button" class="feedback-btn btn-up" title="Helpful answer">👍 Helpful</button>
-            <button type="button" class="feedback-btn btn-down" title="Teach Aanya how to improve">👎 Teach/Improve</button>
+            <button type="button" class="feedback-btn btn-up" title="Helpful answer"><i class="bi bi-hand-thumbs-up"></i> Helpful</button>
+            <button type="button" class="feedback-btn btn-down" title="Teach Aanya how to improve"><i class="bi bi-hand-thumbs-down"></i> Improve</button>
           </div>
           <div class="correction-box" style="display:none;">
             <input type="text" class="correction-input" placeholder="What should Aanya have said / what's correct?">
@@ -792,16 +792,57 @@
    * Primary handler — uses SSE streaming for real-time token display.
    * Falls back to the non-streaming /chat endpoint if EventSource is unavailable.
    */
-  // Sites that Aanya can open — mirrors the server-side SITES dict.
-  // Must be kept in sync with server/engine.py SITES.
-  const AANYA_SITES = {
-    'youtube':   'https://www.youtube.com',
-    'wikipedia': 'https://www.wikipedia.org',
-    'google':    'https://www.google.com',
-    'spotify':   'https://open.spotify.com',
-    'leetcode':  'https://leetcode.com/u/Yuv1ka/',
-    'github':    'https://github.com/Yuv1ka/',
-  };
+  // Sites and rich alias rules that Aanya can open — mirrors the server-side SITE_RULES.
+  const AANYA_SITE_RULES = [
+    {
+      name: 'GitHub',
+      aliases: ['github', 'git hub', 'git-hub', 'gethub'],
+      url: 'https://github.com/Yuvika108',
+    },
+    {
+      name: 'WhatsApp',
+      aliases: ['whatsapp', 'whats app', "what's app", 'what app', 'whatsapp web', 'whats app web'],
+      url: 'https://web.whatsapp.com/',
+    },
+    {
+      name: 'YouTube',
+      aliases: ['youtube', 'you tube'],
+      url: 'https://www.youtube.com',
+    },
+    {
+      name: 'Wikipedia',
+      aliases: ['wikipedia', 'wiki'],
+      url: 'https://www.wikipedia.org',
+    },
+    {
+      name: 'Google',
+      aliases: ['google'],
+      url: 'https://www.google.com',
+    },
+    {
+      name: 'Spotify',
+      aliases: ['spotify'],
+      url: 'https://open.spotify.com',
+    },
+    {
+      name: 'LeetCode',
+      aliases: ['leetcode', 'leet code'],
+      url: 'https://leetcode.com/u/Yuv1ka/',
+    },
+  ];
+
+  function getSiteOpenUrl(rawText) {
+    const q = rawText.toLowerCase().trim();
+    if (q.startsWith('what is ') || q.startsWith('who is ') || q.startsWith('how to ') || q.startsWith('why is ') || q.startsWith('tell me about ')) {
+      return null;
+    }
+    for (const rule of AANYA_SITE_RULES) {
+      if (rule.aliases.some(alias => q.includes(alias))) {
+        return rule.url;
+      }
+    }
+    return null;
+  }
 
   let _lastSynchronouslyOpenedUrl = null;
 
@@ -828,9 +869,9 @@
 
     // 1. Suggest song / music patterns
     if (/(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)/i.test(q) ||
-        /what\s+song\s+should\s+i\s+listen\s+to/i.test(q) ||
-        /give\s+me\s+a\s+(?:good\s+)?song/i.test(q) ||
-        /what\s+should\s+i\s+play/i.test(q)) {
+      /what\s+song\s+should\s+i\s+listen\s+to/i.test(q) ||
+      /give\s+me\s+a\s+(?:good\s+)?song/i.test(q) ||
+      /what\s+should\s+i\s+play/i.test(q)) {
       const picked = CURATED_SPOTIFY_SUGGESTIONS[Math.floor(Math.random() * CURATED_SPOTIFY_SUGGESTIONS.length)];
       return `https://open.spotify.com/search/${encodeURIComponent(picked)}`;
     }
@@ -839,9 +880,9 @@
     const userSuggest = q.match(/\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)/i);
     if (userSuggest) {
       let clean = userSuggest[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
-                               .replace(/\b(?:please|for me)\b/gi, '')
-                               .trim()
-                               .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+        .replace(/\b(?:please|for me)\b/gi, '')
+        .trim()
+        .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (clean && !/^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$/i.test(clean)) {
         return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
       }
@@ -851,9 +892,9 @@
     const playMatch = q.match(/\b(?:play|listen to|put on)\s+(.+)/i);
     if (playMatch) {
       let clean = playMatch[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
-                             .replace(/\b(?:please|for me)\b/gi, '')
-                             .trim()
-                             .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+        .replace(/\b(?:please|for me)\b/gi, '')
+        .trim()
+        .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (!clean || /^(?:music|some music|a song|songs|spotify|something)$/i.test(clean)) {
         return 'https://open.spotify.com';
       }
@@ -887,13 +928,10 @@
         _lastSynchronouslyOpenedUrl = spotifyUrl;
         window.open(spotifyUrl, '_blank', 'noopener,noreferrer');
       } else {
-        const q = text.toLowerCase();
-        for (const [site, url] of Object.entries(AANYA_SITES)) {
-          if (q.includes(site)) {
-            _lastSynchronouslyOpenedUrl = url;
-            window.open(url, '_blank', 'noopener,noreferrer');
-            break; // only open first match
-          }
+        const siteUrl = getSiteOpenUrl(text);
+        if (siteUrl) {
+          _lastSynchronouslyOpenedUrl = siteUrl;
+          window.open(siteUrl, '_blank', 'noopener,noreferrer');
         }
       }
     }
@@ -948,7 +986,7 @@
       card.className = 'chat-card assistant-card streaming';
       const timestamp = formatTime();
       card.innerHTML = `
-        <div class="card-avatar" aria-hidden="true">A</div>
+        <div class="card-avatar" aria-hidden="true"><i class="bi bi-stars"></i></div>
         <div class="card-body">
           <header class="card-header">
             <span class="card-author">Aanya</span>
@@ -963,11 +1001,11 @@
       card.scrollIntoView({ behavior: 'smooth', block: 'end' });
       const streamingP = card.querySelector('p');
 
-      let fullReply    = '';
-      let finalAction  = null;
-      let finalData    = null;
-      let settled      = false;
-      let ttsBuffer    = '';  // accumulates tokens until sentence boundaries
+      let fullReply = '';
+      let finalAction = null;
+      let finalData = null;
+      let settled = false;
+      let ttsBuffer = '';  // accumulates tokens until sentence boundaries
 
       const TIMEOUT_MS = 45000;
       const timer = setTimeout(() => {
@@ -979,110 +1017,110 @@
       setState('thinking', hasAttachments ? 'Analysing your files…' : 'Thinking...');
 
       fetch('/chat/stream', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-        signal:  ctrl?.signal,
+        body: JSON.stringify(payload),
+        signal: ctrl?.signal,
       })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.body.getReader();
-      })
-      .then(async reader => {
-        const decoder = new TextDecoder();
-        let   buffer  = '';
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.body.getReader();
+        })
+        .then(async reader => {
+          const decoder = new TextDecoder();
+          let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
 
-          // Parse SSE lines
-          let nl;
-          while ((nl = buffer.indexOf('\n\n')) !== -1) {
-            const raw = buffer.slice(0, nl).trim();
-            buffer = buffer.slice(nl + 2);
-            if (!raw.startsWith('data:')) continue;
-            const jsonStr = raw.slice(5).trim();
-            if (!jsonStr) continue;
+            // Parse SSE lines
+            let nl;
+            while ((nl = buffer.indexOf('\n\n')) !== -1) {
+              const raw = buffer.slice(0, nl).trim();
+              buffer = buffer.slice(nl + 2);
+              if (!raw.startsWith('data:')) continue;
+              const jsonStr = raw.slice(5).trim();
+              if (!jsonStr) continue;
 
-            let packet;
-            try { packet = JSON.parse(jsonStr); } catch { continue; }
+              let packet;
+              try { packet = JSON.parse(jsonStr); } catch { continue; }
 
-            if (packet.type === 'token') {
-              const newText = (packet.text ?? packet.token ?? '');
-              if (!newText) continue;
+              if (packet.type === 'token') {
+                const newText = (packet.text ?? packet.token ?? '');
+                if (!newText) continue;
 
-              if (fullReply === '') {
-                stopSpeaking(); // clear any prior audio
-                setState('speaking', 'Responding...');
-              }
-              fullReply += newText;
-              ttsBuffer += newText;
-              streamingP.textContent = fullReply;
-              card.scrollIntoView({ behavior: 'smooth', block: 'end' });
-
-              // ── Fire voice as soon as complete clauses/sentences form ─────
-              const { toSpeak, remainder } = extractReadySentences(ttsBuffer);
-              if (toSpeak.length > 0) {
-                ttsBuffer = remainder;
-                for (const sentence of toSpeak) {
-                  enqueueTTS(sentence);
+                if (fullReply === '') {
+                  stopSpeaking(); // clear any prior audio
+                  setState('speaking', 'Responding...');
                 }
-              }
-
-            } else if (packet.type === 'done') {
-              finalAction = packet.action || null;
-              finalData   = packet.action_data || null;
-              if (packet.reply && packet.reply.length >= fullReply.length) {
-                fullReply = packet.reply;
+                fullReply += newText;
+                ttsBuffer += newText;
                 streamingP.textContent = fullReply;
+                card.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+                // ── Fire voice as soon as complete clauses/sentences form ─────
+                const { toSpeak, remainder } = extractReadySentences(ttsBuffer);
+                if (toSpeak.length > 0) {
+                  ttsBuffer = remainder;
+                  for (const sentence of toSpeak) {
+                    enqueueTTS(sentence);
+                  }
+                }
+
+              } else if (packet.type === 'done') {
+                finalAction = packet.action || null;
+                finalData = packet.action_data || null;
+                if (packet.reply && packet.reply.length >= fullReply.length) {
+                  fullReply = packet.reply;
+                  streamingP.textContent = fullReply;
+                }
+              } else if (packet.type === 'error') {
+                throw new Error(packet.error || 'Stream error');
               }
-            } else if (packet.type === 'error') {
-              throw new Error(packet.error || 'Stream error');
             }
           }
-        }
 
-        // Flush any remaining buffered text for speech
-        if (ttsBuffer.trim()) {
-          enqueueTTS(ttsBuffer.trim());
-          ttsBuffer = '';
-        }
+          // Flush any remaining buffered text for speech
+          if (ttsBuffer.trim()) {
+            enqueueTTS(ttsBuffer.trim());
+            ttsBuffer = '';
+          }
 
-        _streamInProgress = false;
+          _streamInProgress = false;
 
-        // Streaming complete — finalise the card
-        clearTimeout(timer);
-        card.classList.remove('streaming');
+          // Streaming complete — finalise the card
+          clearTimeout(timer);
+          card.classList.remove('streaming');
 
-        if (!fullReply) fullReply = "I didn't receive a response.";
+          if (!fullReply) fullReply = "I didn't receive a response.";
 
-        // Inject feedback bar
-        const contentDiv = card.querySelector('.card-content');
-        attachFeedbackBar(contentDiv, fullReply);
+          // Inject feedback bar
+          const contentDiv = card.querySelector('.card-content');
+          attachFeedbackBar(contentDiv, fullReply);
 
-        // If voice is disabled or TTS has already completed, return to standby immediately
-        if (!state.voiceEnabled || !_ttsPlaying) {
-          playDoneChime();
-          setState('standby');
-        }
+          // If voice is disabled or TTS has already completed, return to standby immediately
+          if (!state.voiceEnabled || !_ttsPlaying) {
+            playDoneChime();
+            setState('standby');
+          }
 
-        // Side-effects
-        if (finalAction === 'open-url' && finalData && finalData !== _lastSynchronouslyOpenedUrl) window.open(finalData, '_blank');
-        _lastSynchronouslyOpenedUrl = null;
-        if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
-        if (finalAction === 'learned' || Array.isArray(finalData)) loadMemory();
-        if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();
+          // Side-effects
+          if (finalAction === 'open-url' && finalData && finalData !== _lastSynchronouslyOpenedUrl) window.open(finalData, '_blank');
+          _lastSynchronouslyOpenedUrl = null;
+          if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
+          if (finalAction === 'learned' || Array.isArray(finalData)) loadMemory();
+          if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();
 
-        if (!settled) { settled = true; resolve(); }
-      })
-      .catch(err => {
-        clearTimeout(timer);
-        _streamInProgress = false;
-        card.remove();
-        if (!settled) { settled = true; reject(err); }
-      });
+          if (!settled) { settled = true; resolve(); }
+        })
+        .catch(err => {
+          clearTimeout(timer);
+          _streamInProgress = false;
+          card.remove();
+          if (!settled) { settled = true; reject(err); }
+        });
     });
   }
 
@@ -1092,16 +1130,16 @@
   async function chatViaFetch(payload) {
     try {
       const res = await fetch('/chat', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-        signal:  _chatAbortCtrl?.signal,
+        body: JSON.stringify(payload),
+        signal: _chatAbortCtrl?.signal,
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
         throw new Error(detail.detail || `HTTP ${res.status}`);
       }
-      const data  = await res.json();
+      const data = await res.json();
       const reply = data.reply || "I didn't receive a response.";
       appendAssistantMessage(reply, data.action, data.action_data);
       speakResponse(reply);
@@ -1130,8 +1168,8 @@
     const bar = document.createElement('div');
     bar.className = 'card-feedback-bar';
     bar.innerHTML = `
-      <button type="button" class="feedback-btn btn-up" title="Helpful answer">👍 Helpful</button>
-      <button type="button" class="feedback-btn btn-down" title="Teach Aanya how to improve">👎 Teach/Improve</button>
+      <button type="button" class="feedback-btn btn-up" title="Helpful answer"><i class="bi bi-hand-thumbs-up"></i> Helpful</button>
+      <button type="button" class="feedback-btn btn-down" title="Teach Aanya how to improve"><i class="bi bi-hand-thumbs-down"></i> Improve</button>
     `;
     const corrBox = document.createElement('div');
     corrBox.className = 'correction-box';
@@ -1148,10 +1186,10 @@
     contentDiv.appendChild(corrBox);
     contentDiv.appendChild(toast);
 
-    const btnUp     = bar.querySelector('.btn-up');
-    const btnDown   = bar.querySelector('.btn-down');
+    const btnUp = bar.querySelector('.btn-up');
+    const btnDown = bar.querySelector('.btn-down');
     const corrInput = corrBox.querySelector('.correction-input');
-    const corrSub   = corrBox.querySelector('.correction-submit-btn');
+    const corrSub = corrBox.querySelector('.correction-submit-btn');
 
     btnUp.addEventListener('click', async () => {
       btnUp.classList.add('active-up');
@@ -1252,10 +1290,7 @@
         li.innerHTML = `
           <span>${idx + 1}. ${escapeHTML(task)}</span>
           <button class="task-delete-btn" aria-label="Delete task ${idx + 1}" data-index="${idx}" title="Remove task">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
+            <i class="bi bi-trash"></i>
           </button>
         `;
         DOM.tasksList.appendChild(li);
@@ -1335,7 +1370,7 @@
         prefs.forEach((p) => {
           const li = document.createElement('li');
           li.className = 'memory-item';
-          li.innerHTML = `<span>❤️ ${escapeHTML(p)}</span>`;
+          li.innerHTML = `<span><i class="bi bi-heart"></i> ${escapeHTML(p)}</span>`;
           DOM.memPreferencesList.appendChild(li);
         });
       }
@@ -1352,7 +1387,7 @@
         rules.forEach((r) => {
           const li = document.createElement('li');
           li.className = 'memory-item';
-          li.innerHTML = `<span>⚖️ ${escapeHTML(r)}</span>`;
+          li.innerHTML = `<span><i class="bi bi-shield-check"></i> ${escapeHTML(r)}</span>`;
           DOM.memRulesList.appendChild(li);
         });
       }
@@ -1369,7 +1404,7 @@
         facts.forEach((f) => {
           const li = document.createElement('li');
           li.className = 'memory-item';
-          li.innerHTML = `<span>💡 ${escapeHTML(f)}</span>`;
+          li.innerHTML = `<span><i class="bi bi-lightbulb"></i> ${escapeHTML(f)}</span>`;
           DOM.memFactsList.appendChild(li);
         });
       }
@@ -1414,15 +1449,16 @@
   // ── Themes & Settings ──────────────────────────────────────────────────────
   function applyTheme(themeName) {
     state.theme = themeName;
-    DOM.body.classList.remove('theme-midnight', 'theme-bixby', 'theme-cyber');
+    DOM.body.classList.remove('theme-pastel', 'theme-blush', 'theme-sage', 'theme-midnight', 'theme-bixby', 'theme-cyber');
     DOM.body.classList.add(themeName);
     localStorage.setItem('aanya_theme', themeName);
     if (DOM.themeSelect) DOM.themeSelect.value = themeName;
   }
 
   function cycleTheme() {
-    const themes = ['theme-midnight', 'theme-bixby', 'theme-cyber'];
-    const nextIdx = (themes.indexOf(state.theme) + 1) % themes.length;
+    const themes = ['theme-pastel', 'theme-blush', 'theme-sage'];
+    const currentTheme = themes.includes(state.theme) ? state.theme : 'theme-pastel';
+    const nextIdx = (themes.indexOf(currentTheme) + 1) % themes.length;
     applyTheme(themes[nextIdx]);
   }
 

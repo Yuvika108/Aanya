@@ -16,32 +16,32 @@ class VoiceOrbVisualizer {
     this.targetAmplitude = 0;
     this.rotation = 0;
 
-    // Palette per state
+    // Palette per state — soft pastel gradients
     this.colorSchemes = {
       standby: {
-        core: ['#00f2fe', '#4facfe', '#0072ff'],
-        glow: 'rgba(0, 242, 254, 0.45)',
-        ring: 'rgba(79, 172, 254, 0.6)'
+        core: ['#b8a4f8', '#e8a4c8', '#a4d8f0'],
+        glow: 'rgba(184, 164, 248, 0.35)',
+        ring: 'rgba(164, 216, 240, 0.5)'
       },
       listening: {
-        core: ['#00f2fe', '#10b981', '#38ef7d'],
-        glow: 'rgba(16, 185, 129, 0.55)',
-        ring: 'rgba(0, 242, 254, 0.85)'
+        core: ['#a890f5', '#86efac', '#6ee7b7'],
+        glow: 'rgba(134, 239, 172, 0.45)',
+        ring: 'rgba(168, 144, 245, 0.65)'
       },
       thinking: {
-        core: ['#c471ed', '#f64f59', '#12c2e9'],
-        glow: 'rgba(196, 113, 237, 0.6)',
-        ring: 'rgba(246, 79, 89, 0.8)'
+        core: ['#f4a8c4', '#fbcfe8', '#c4b5fd'],
+        glow: 'rgba(244, 168, 196, 0.45)',
+        ring: 'rgba(196, 181, 253, 0.65)'
       },
       speaking: {
-        core: ['#00c6ff', '#0072ff', '#00f2fe'],
-        glow: 'rgba(0, 198, 255, 0.55)',
-        ring: 'rgba(0, 114, 255, 0.85)'
+        core: ['#93c5fd', '#a78bfa', '#c4b5fd'],
+        glow: 'rgba(147, 197, 253, 0.45)',
+        ring: 'rgba(167, 139, 250, 0.65)'
       },
       executing: {
-        core: ['#ffb300', '#f59e0b', '#ef4444'],
-        glow: 'rgba(245, 158, 11, 0.55)',
-        ring: 'rgba(255, 179, 0, 0.85)'
+        core: ['#fcd34d', '#fdba74', '#fca5a5'],
+        glow: 'rgba(253, 186, 116, 0.45)',
+        ring: 'rgba(252, 211, 77, 0.65)'
       }
     };
 

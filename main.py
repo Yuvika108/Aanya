@@ -42,19 +42,62 @@ class C:
 # ─────────────────────────────────────────────
 SITES = {
     "youtube":   "https://www.youtube.com",
+    "whatsapp":  "https://web.whatsapp.com/",
     "wikipedia": "https://www.wikipedia.org",
     "google":    "https://www.google.com",
     "spotify":   "https://open.spotify.com",
-    "leetcode":  "https://www.leetcode.com",
-    "github":    "https://www.github.com",
+    "leetcode":  "https://leetcode.com/u/Yuv1ka/",
+    "github":    "https://github.com/Yuvika108",
 }
+
+# Rich site rules supporting multiple voice and text aliases
+SITE_RULES = [
+    {
+        "name": "GitHub",
+        "aliases": ["github", "git hub", "git-hub", "gethub"],
+        "url": "https://github.com/Yuvika108",
+    },
+    {
+        "name": "WhatsApp",
+        "aliases": ["whatsapp", "whats app", "what's app", "what app", "whatsapp web", "whats app web"],
+        "url": "https://web.whatsapp.com/",
+        "app_name": "WhatsApp",
+    },
+    {
+        "name": "YouTube",
+        "aliases": ["youtube", "you tube"],
+        "url": "https://www.youtube.com",
+    },
+    {
+        "name": "Wikipedia",
+        "aliases": ["wikipedia", "wiki"],
+        "url": "https://www.wikipedia.org",
+    },
+    {
+        "name": "Google",
+        "aliases": ["google"],
+        "url": "https://www.google.com",
+    },
+    {
+        "name": "Spotify",
+        "aliases": ["spotify"],
+        "url": "https://open.spotify.com",
+    },
+    {
+        "name": "LeetCode",
+        "aliases": ["leetcode", "leet code"],
+        "url": "https://leetcode.com/u/Yuv1ka/",
+    },
+]
 
 # Table-driven app commands: (trigger_phrases, say_name, open_path)
 APP_COMMANDS = [
-    (["open chrome"],                  "Chrome",   "/Applications/Google Chrome.app"),
-    (["open brave"],                   "Brave",    "/Applications/Brave Browser.app"),
-    (["open finder", "open files"],    "Finder",   None),          # None → home dir
-    (["open music", "play music"],     "Spotify",  "https://open.spotify.com/"),
+    (["open chrome"],                               "Chrome",   "/Applications/Google Chrome.app"),
+    (["open brave"],                                "Brave",    "/Applications/Brave Browser.app"),
+    (["open finder", "open files"],                 "Finder",   None),          # None → home dir
+    (["open music", "play music"],                  "Spotify",  "https://open.spotify.com/"),
+    (["open whatsapp", "open whats app", "open what's app", "open whatsapp web"], "WhatsApp", "https://web.whatsapp.com/"),
+    (["open github", "open git hub", "open git-hub"], "GitHub",   "https://github.com/Yuv1ka/"),
 ]
 
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
@@ -431,13 +474,25 @@ class AanyaEngine:
             subprocess.run(["open", spotify_info["url"]])
             return
 
-        # Web sites
-        for site, url in SITES.items():
-            if site in q:
-                self._emit_status("🌐", "OPEN", f"{site.capitalize()} → {url}")
-                self.say(f"Opening {site}!")
+        # Web sites & rich aliases
+        matched_site = None
+        if not any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "why is ", "tell me about ")):
+            for rule in SITE_RULES:
+                if any(alias in q for alias in rule["aliases"]):
+                    matched_site = rule
+                    break
+
+        if matched_site:
+            name = matched_site["name"]
+            url = matched_site["url"]
+            self._emit_status("🌐", "OPEN", f"{name} → {url}")
+            self.say(f"Opening {name}!")
+            app_name = matched_site.get("app_name")
+            if app_name and os.path.exists(f"/Applications/{app_name}.app"):
+                subprocess.run(["open", "-a", app_name])
+            else:
                 subprocess.run(["open", url])
-                return
+            return
 
         # Table-driven app commands
         for phrases, name, path in APP_COMMANDS:

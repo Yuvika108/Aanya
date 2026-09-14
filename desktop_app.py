@@ -346,7 +346,7 @@ class AanyaApp(ctk.CTk):
 
         section("QUICK ACCESS")
         site_icons = {"youtube": "play", "google": "search", "github": "code",
-                      "spotify": "music", "wikipedia": "book", "leetcode": "code"}
+                      "whatsapp": "globe", "spotify": "music", "wikipedia": "book", "leetcode": "code"}
         for site, url in SITES.items():
             QuickLaunchButton(
                 self.sidebar, label=site.capitalize(),

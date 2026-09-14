@@ -30,6 +30,53 @@ SITES = {
     "github":    "https://github.com/Yuv1ka/",
 }
 
+SITE_RULES = [
+    {
+        "name": "GitHub",
+        "aliases": ["github", "git hub", "git-hub", "gethub"],
+        "url": "https://github.com/Yuv1ka/",
+    },
+    {
+        "name": "WhatsApp",
+        "aliases": ["whatsapp", "whats app", "what's app", "what app", "whatsapp web", "whats app web"],
+        "url": "https://web.whatsapp.com/",
+    },
+    {
+        "name": "YouTube",
+        "aliases": ["youtube", "you tube"],
+        "url": "https://www.youtube.com/user/YUVI09",
+    },
+    {
+        "name": "Google",
+        "aliases": ["google"],
+        "url": "https://www.google.com",
+    },
+    {
+        "name": "Spotify",
+        "aliases": ["spotify"],
+        "url": "https://open.spotify.com/user/31y44saeslws5yvkws4zvkh7njuu",
+    },
+    {
+        "name": "LeetCode",
+        "aliases": ["leetcode", "leet code"],
+        "url": "https://leetcode.com/u/Yuv1ka/",
+    },
+    {
+        "name": "Wikipedia",
+        "aliases": ["wikipedia", "wiki"],
+        "url": "https://www.wikipedia.org",
+    },
+]
+
+def _match_site_intent(query: str):
+    q = query.lower().strip()
+    if any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "why is ", "tell me about ")):
+        return None
+    for rule in SITE_RULES:
+        if any(alias in q for alias in rule["aliases"]):
+            return rule
+    return None
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -628,14 +675,14 @@ class AanyaEngine:
                     "status": "done",
                 }
 
-            for site, url in SITES.items():
-                if site in q:
-                    return {
-                        "reply": f"Opening {site} for you!",
-                        "action": "open-url",
-                        "action_data": url,
-                        "status": "done",
-                    }
+            matched_site = _match_site_intent(query)
+            if matched_site:
+                return {
+                    "reply": f"Opening {matched_site['name']} for you!",
+                    "action": "open-url",
+                    "action_data": matched_site["url"],
+                    "status": "done",
+                }
 
             now = datetime.datetime.now()
             if "time" in q and "what" in q:
@@ -727,13 +774,13 @@ class AanyaEngine:
                 return
 
             # 1. Direct website openers
-            for site, url in SITES.items():
-                if site in q:
-                    yield {"type": "meta", "action": "open-url", "action_data": url}
-                    msg = f"Opening {site} for you!"
-                    yield {"type": "token", "token": msg}
-                    yield {"type": "done", "reply": msg}
-                    return
+            matched_site = _match_site_intent(query)
+            if matched_site:
+                yield {"type": "meta", "action": "open-url", "action_data": matched_site["url"]}
+                msg = f"Opening {matched_site['name']} for you!"
+                yield {"type": "token", "token": msg}
+                yield {"type": "done", "reply": msg}
+                return
 
             # 2. Instant commands: time, date, memory, tasks, goodbye, reset
             instant_triggers = (

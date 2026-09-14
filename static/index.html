@@ -3,17 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aanya — Next-Gen AI Voice Assistant</title>
-  <meta name="description" content="Aanya is an ultra-premium AI voice assistant inspired by Alexa and Bixby, featuring fluid audio visualization, voice recognition, and smart task management.">
-  
+  <title>Aanya — Personal AI Voice Assistant</title>
+  <meta name="description" content="Aanya is a personal AI voice assistant with fluid voice recognition, adaptive memory, and smart task management — all in a beautiful pastel interface.">
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="theme-midnight">
+<body class="theme-pastel">
 
   <!-- Ambient Glow Background -->
   <div class="ambient-glow" aria-hidden="true">
@@ -22,79 +25,62 @@
     <div class="glow-orb orb-3"></div>
   </div>
 
-  <!-- Drag and Drop Fullscreen Overlay -->
+  <!-- Drag & Drop Fullscreen Overlay -->
   <div id="dropZoneOverlay" class="dropzone-overlay" aria-hidden="true" role="dialog" aria-label="Drop files here">
     <div class="dropzone-card">
-      <div class="dropzone-icon" aria-hidden="true">📎</div>
+      <div class="dropzone-icon" aria-hidden="true">
+        <i class="bi bi-paperclip"></i>
+      </div>
       <div class="dropzone-text">Drop files to analyze with Aanya</div>
-      <span class="dropzone-sub">Documents, Images, Video, Audio (PDF, TXT, PNG, MP4, MP3, etc.)</span>
+      <span class="dropzone-sub">Documents, Images, Video, Audio — PDF, TXT, PNG, MP4, MP3 &amp; more</span>
     </div>
   </div>
 
   <div class="app-layout">
+
     <!-- Top Navigation Header -->
     <header class="app-header" role="banner">
       <div class="brand-group">
-        <div class="brand-logo" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <circle cx="14" cy="14" r="12" stroke="url(#brand-grad)" stroke-width="2.5" />
-            <circle cx="14" cy="14" r="6" fill="url(#brand-grad)" />
-            <defs>
-              <linearGradient id="brand-grad" x1="2" y1="2" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#00f2fe" />
-                <stop offset="1" stop-color="#4facfe" />
-              </linearGradient>
-            </defs>
-          </svg>
+        <div class="brand-logo-wrap" aria-hidden="true">
+          <i class="bi bi-stars"></i>
         </div>
         <div class="brand-text">
-          <h1 class="brand-title">AANYA</h1>
-          <span class="brand-badge">VOICE AI</span>
+          <h1 class="brand-title">Aanya</h1>
+          <span class="brand-sub">Voice AI</span>
         </div>
       </div>
 
-      <!-- State Indicator Pill -->
+      <!-- State Indicator -->
       <div id="stateBadge" class="state-pill state-standby" role="status" aria-live="polite">
         <span class="state-dot" aria-hidden="true"></span>
         <span id="stateText" class="state-label">Standby</span>
       </div>
 
       <!-- Header Controls -->
-      <nav class="header-actions" aria-label="Main Navigation">
+      <nav class="header-actions" aria-label="Assistant Controls">
         <button id="themeToggleBtn" class="icon-btn" aria-label="Toggle visual theme" title="Switch Theme">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
-          </svg>
+          <i class="bi bi-palette" aria-hidden="true"></i>
         </button>
 
-        <button id="memoryToggleBtn" class="icon-btn memory-btn" aria-label="Aanya's Adaptive Memory" title="What Aanya Learned (Memory)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"></path>
-            <path d="M9 21h6"></path>
-          </svg>
+        <button id="memoryToggleBtn" class="icon-btn memory-btn" aria-label="Aanya's Adaptive Memory" title="Adaptive Memory">
+          <i class="bi bi-database" aria-hidden="true"></i>
           <span id="memoryCountBadge" class="badge-count" aria-hidden="true">0</span>
         </button>
 
-        <button id="tasksToggleBtn" class="icon-btn tasks-btn" aria-label="Open Tasks Panel" title="Reminders & Tasks">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 11l3 3L22 4"></path>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-          </svg>
+        <button id="tasksToggleBtn" class="icon-btn tasks-btn" aria-label="Open Tasks Panel" title="Reminders &amp; Tasks">
+          <i class="bi bi-check2-square" aria-hidden="true"></i>
           <span id="taskCountBadge" class="badge-count" aria-hidden="true">0</span>
         </button>
 
-        <button id="settingsToggleBtn" class="icon-btn" aria-label="Open Assistant Settings" title="Voice & Session Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
+        <button id="settingsToggleBtn" class="icon-btn" aria-label="Open Assistant Settings" title="Settings">
+          <i class="bi bi-sliders" aria-hidden="true"></i>
         </button>
       </nav>
     </header>
 
     <!-- Main Experience Area -->
     <main class="main-content" role="main">
-      
+
       <!-- Centerpiece: Fluid Morphing Voice Orb -->
       <section class="orb-section" aria-label="Visual Assistant Core">
         <div class="orb-viewport">
@@ -102,23 +88,16 @@
           <div class="orb-pulse-ring ring-1" aria-hidden="true"></div>
           <div class="orb-pulse-ring ring-2" aria-hidden="true"></div>
           <div class="orb-pulse-ring ring-3" aria-hidden="true"></div>
-          
-          <!-- Center Trigger Overlay -->
+
+          <!-- Center Trigger -->
           <button id="orbCenterBtn" class="orb-center-trigger" aria-label="Toggle Voice Listening" title="Click to Speak">
-            <div class="mic-inner-icon" aria-hidden="true">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="23"></line>
-                <line x1="8" y1="23" x2="16" y2="23"></line>
-              </svg>
-            </div>
+            <i class="bi bi-mic" aria-hidden="true"></i>
           </button>
         </div>
 
-        <!-- Assistant Status Subtitle -->
+        <!-- Caption & Wave -->
         <div class="assistant-caption">
-          <p id="captionText" class="caption-text">Tap the orb or speak to Aanya</p>
+          <p id="captionText" class="caption-text">Tap the orb or press the mic to speak</p>
           <div id="audioWaveBars" class="audio-wave-bars" aria-hidden="true">
             <span class="bar bar-1"></span>
             <span class="bar bar-2"></span>
@@ -129,49 +108,51 @@
         </div>
       </section>
 
-      <!-- Quick Suggestion Chips (Alexa/Bixby style) -->
-      <section class="suggestions-section" aria-label="Recommended Voice Queries">
+      <!-- Quick Suggestion Chips -->
+      <section class="suggestions-section" aria-label="Suggested queries">
         <div class="suggestions-scroll" role="list">
           <button class="chip-btn" data-query="What time is it?" role="listitem">
-            <span class="chip-icon">🕒</span> What time is it?
+            <i class="bi bi-clock" aria-hidden="true"></i> What time is it?
           </button>
           <button class="chip-btn" data-query="What is today's date?" role="listitem">
-            <span class="chip-icon">📅</span> Today's date
+            <i class="bi bi-calendar3" aria-hidden="true"></i> Today's date
           </button>
           <button class="chip-btn" data-query="Open Spotify" role="listitem">
-            <span class="chip-icon">🎵</span> Open Spotify
+            <i class="bi bi-music-note-beamed" aria-hidden="true"></i> Open Spotify
           </button>
           <button class="chip-btn" data-query="Open YouTube" role="listitem">
-            <span class="chip-icon">🎥</span> Open YouTube
+            <i class="bi bi-play-circle" aria-hidden="true"></i> Open YouTube
           </button>
           <button class="chip-btn" data-query="What do you know about me?" role="listitem">
-            <span class="chip-icon">🧠</span> What do you know about me?
+            <i class="bi bi-person-circle" aria-hidden="true"></i> What do you know?
           </button>
           <button class="chip-btn" data-query="Remember that I prefer brief answers" role="listitem">
-            <span class="chip-icon">💡</span> Teach preference
+            <i class="bi bi-lightning" aria-hidden="true"></i> Teach preference
           </button>
           <button class="chip-btn" data-query="Show my tasks" role="listitem">
-            <span class="chip-icon">📋</span> Show my tasks
+            <i class="bi bi-list-task" aria-hidden="true"></i> My tasks
           </button>
           <button class="chip-btn" data-query="Tell me an inspiring thought for today" role="listitem">
-            <span class="chip-icon">✨</span> Daily inspiration
+            <i class="bi bi-sun" aria-hidden="true"></i> Daily inspiration
           </button>
         </div>
       </section>
 
-      <!-- Conversational Feed / Interaction Cards -->
+      <!-- Conversational Feed -->
       <section class="conversation-section" aria-label="Conversation History">
         <div id="chatStream" class="chat-stream" role="log" aria-live="polite">
-          <!-- Initial Welcome Card -->
+          <!-- Welcome Card -->
           <article class="chat-card assistant-card intro-card">
-            <div class="card-avatar" aria-hidden="true">A</div>
+            <div class="card-avatar" aria-hidden="true">
+              <i class="bi bi-stars"></i>
+            </div>
             <div class="card-body">
               <header class="card-header">
                 <span class="card-author">Aanya</span>
                 <time class="card-timestamp">Now</time>
               </header>
               <div class="card-content">
-                <p>Hello! I'm Aanya, your personal voice assistant. Speak naturally or select any suggestion above. How can I assist you today?</p>
+                <p>Hi there! I'm Aanya, your personal voice assistant. You can speak naturally, type a message, or select a suggestion above. How can I help you today?</p>
               </div>
             </div>
           </article>
@@ -179,32 +160,26 @@
       </section>
     </main>
 
-    <!-- Bottom Action Dock -->
-    <footer class="input-dock" role="region" aria-label="Voice & Text Input Bar">
+    <!-- Bottom Input Dock -->
+    <footer class="input-dock" role="region" aria-label="Voice &amp; Text Input">
       <form id="chatForm" class="dock-form" role="search" onsubmit="return false;">
-        <button id="dockMicBtn" type="button" class="dock-action-btn mic-btn" aria-label="Toggle Microphone Voice Input" title="Voice Input (M)">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="23"></line>
-            <line x1="8" y1="23" x2="16" y2="23"></line>
-          </svg>
+        <button id="dockMicBtn" type="button" class="dock-action-btn mic-btn" aria-label="Toggle Voice Input" title="Voice Input (M)">
+          <i class="bi bi-mic" aria-hidden="true"></i>
         </button>
 
         <div class="input-wrapper">
-          <input 
-            type="text" 
-            id="queryInput" 
-            class="chat-text-input" 
-            placeholder="Ask Aanya anything or tap the mic..." 
+          <input
+            type="text"
+            id="queryInput"
+            class="chat-text-input"
+            placeholder="Ask Aanya anything..."
             autocomplete="off"
             aria-label="Ask Aanya"
           >
-          <!-- File preview strip (hidden until files queued) -->
           <div id="attachmentPreview" class="attachment-preview" aria-live="polite" aria-label="Queued attachments"></div>
         </div>
 
-        <!-- Hidden file input — triggered by the attach button -->
+        <!-- Hidden file input -->
         <input
           type="file"
           id="fileInput"
@@ -216,24 +191,16 @@
         >
 
         <!-- Attach file button -->
-        <button id="attachBtn" type="button" class="dock-action-btn attach-btn" aria-label="Attach files — images, docs, audio, video" title="Attach files (images, docs, audio, video)">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-          </svg>
+        <button id="attachBtn" type="button" class="dock-action-btn attach-btn" aria-label="Attach files" title="Attach files">
+          <i class="bi bi-paperclip" aria-hidden="true"></i>
         </button>
 
-        <button id="sendBtn" type="submit" class="dock-action-btn send-btn" aria-label="Send query" title="Send message">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
+        <button id="sendBtn" type="submit" class="dock-action-btn send-btn" aria-label="Send query" title="Send">
+          <i class="bi bi-send" aria-hidden="true"></i>
         </button>
 
-        <button id="voiceSpeakToggle" type="button" class="dock-action-btn tts-toggle active" aria-label="Toggle Voice Response" title="Voice Audio Response ON/OFF">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-          </svg>
+        <button id="voiceSpeakToggle" type="button" class="dock-action-btn tts-toggle active" aria-label="Toggle Voice Response" title="Voice Audio ON/OFF">
+          <i class="bi bi-volume-up" aria-hidden="true"></i>
         </button>
       </form>
     </footer>
@@ -243,14 +210,11 @@
   <aside id="tasksDrawer" class="tasks-drawer" aria-labelledby="tasksDrawerTitle" aria-hidden="true">
     <div class="drawer-header">
       <div class="drawer-title-group">
-        <h2 id="tasksDrawerTitle" class="drawer-title">Persistent Tasks</h2>
+        <h2 id="tasksDrawerTitle" class="drawer-title">Tasks</h2>
         <span id="drawerTaskBadge" class="drawer-badge">0 items</span>
       </div>
       <button id="closeTasksBtn" class="icon-btn" aria-label="Close Tasks Panel">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -260,14 +224,12 @@
       <button type="submit" class="drawer-submit-btn" aria-label="Add Task">Add</button>
     </form>
 
-    <!-- Tasks List Container -->
+    <!-- Tasks List -->
     <div class="drawer-body">
-      <ul id="tasksList" class="tasks-list" role="list">
-        <!-- Dynamically rendered -->
-      </ul>
+      <ul id="tasksList" class="tasks-list" role="list"></ul>
       <div id="emptyTasksNotice" class="empty-state">
-        <div class="empty-icon" aria-hidden="true">📝</div>
-        <p>No tasks saved yet. Tell Aanya "Remember to..." or add one above!</p>
+        <div class="empty-icon" aria-hidden="true"><i class="bi bi-clipboard-check"></i></div>
+        <p>No tasks yet. Tell Aanya "Remember to…" or add one above.</p>
       </div>
     </div>
   </aside>
@@ -280,10 +242,7 @@
         <span id="drawerMemoryBadge" class="drawer-badge">Self-Learning</span>
       </div>
       <button id="closeMemoryBtn" class="icon-btn" aria-label="Close Memory Panel">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"></line>
-          <line x1="6" y1="6" x2="18" y2="18"></line>
-        </svg>
+        <i class="bi bi-x-lg" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -293,9 +252,9 @@
       <button type="submit" class="drawer-submit-btn" aria-label="Teach">Teach</button>
     </form>
 
-    <!-- Memory Content Container -->
+    <!-- Memory Content -->
     <div class="drawer-body memory-body">
-      <!-- Learning Stats Overview -->
+      <!-- Stats -->
       <section class="memory-stats-grid" aria-label="Learning Metrics">
         <div class="stat-card">
           <span class="stat-val" id="memInteractions">0</span>
@@ -303,62 +262,65 @@
         </div>
         <div class="stat-card">
           <span class="stat-val" id="memThumbsUp">0</span>
-          <span class="stat-lbl">Helpful 👍</span>
+          <span class="stat-lbl">Helpful</span>
         </div>
         <div class="stat-card">
           <span class="stat-val" id="memCorrections">0</span>
-          <span class="stat-lbl">Taught 💡</span>
+          <span class="stat-lbl">Taught</span>
         </div>
       </section>
 
-      <!-- Profile & Name -->
+      <!-- User Identity -->
       <div class="memory-group">
-        <h3 class="memory-group-title">👤 User Identity</h3>
+        <h3 class="memory-group-title">
+          <i class="bi bi-person" aria-hidden="true"></i> User Identity
+        </h3>
         <div id="memProfileBox" class="memory-profile-card">
           <span id="memUserName" class="profile-name">Name: Not learned yet</span>
         </div>
       </div>
 
-      <!-- Preferences & Likes -->
+      <!-- Preferences -->
       <div class="memory-group">
-        <h3 class="memory-group-title">❤️ Preferences & Likes</h3>
-        <ul id="memPreferencesList" class="memory-items-list" role="list">
-          <!-- Dynamically filled -->
-        </ul>
-        <div id="emptyPreferencesNotice" class="memory-empty-text">No preferences learned yet. Tell Aanya "I like..." or "My favourite is..."</div>
+        <h3 class="memory-group-title">
+          <i class="bi bi-heart" aria-hidden="true"></i> Preferences &amp; Likes
+        </h3>
+        <ul id="memPreferencesList" class="memory-items-list" role="list"></ul>
+        <div id="emptyPreferencesNotice" class="memory-empty-text">No preferences learned yet. Tell Aanya "I like…" or "My favourite is…"</div>
       </div>
 
-      <!-- Behavioral Rules -->
+      <!-- Rules -->
       <div class="memory-group">
-        <h3 class="memory-group-title">⚖️ Rules & Guidelines</h3>
-        <ul id="memRulesList" class="memory-items-list" role="list">
-          <!-- Dynamically filled -->
-        </ul>
-        <div id="emptyRulesNotice" class="memory-empty-text">No custom rules set. Tell Aanya "Always..." or "Never..."</div>
+        <h3 class="memory-group-title">
+          <i class="bi bi-shield-check" aria-hidden="true"></i> Rules &amp; Guidelines
+        </h3>
+        <ul id="memRulesList" class="memory-items-list" role="list"></ul>
+        <div id="emptyRulesNotice" class="memory-empty-text">No custom rules set. Tell Aanya "Always…" or "Never…"</div>
       </div>
 
-      <!-- Learned Facts & Corrections -->
+      <!-- Learned Facts -->
       <div class="memory-group">
-        <h3 class="memory-group-title">🧠 Learned Facts</h3>
-        <ul id="memFactsList" class="memory-items-list" role="list">
-          <!-- Dynamically filled -->
-        </ul>
-        <div id="emptyFactsNotice" class="memory-empty-text">No explicit facts taught yet. Tell Aanya "Learn this: ..." or correct a mistake.</div>
+        <h3 class="memory-group-title">
+          <i class="bi bi-lightbulb" aria-hidden="true"></i> Learned Facts
+        </h3>
+        <ul id="memFactsList" class="memory-items-list" role="list"></ul>
+        <div id="emptyFactsNotice" class="memory-empty-text">No explicit facts taught yet. Tell Aanya "Learn this: …" or correct a mistake.</div>
       </div>
 
       <!-- Interests -->
       <div class="memory-group">
-        <h3 class="memory-group-title">🏷️ Detected Interests</h3>
-        <div id="memInterestsTags" class="tag-cloud">
-          <!-- Dynamically filled -->
-        </div>
+        <h3 class="memory-group-title">
+          <i class="bi bi-bookmark" aria-hidden="true"></i> Detected Interests
+        </h3>
+        <div id="memInterestsTags" class="tag-cloud"></div>
         <div id="emptyInterestsNotice" class="memory-empty-text">No topics detected yet. Chat about technology, music, books, etc.</div>
       </div>
 
-      <!-- Clear Memory Action -->
+      <!-- Clear Memory -->
       <div class="memory-footer-actions">
         <button id="clearMemoryBtn" type="button" class="danger-outline-btn" title="Reset all learned memory for this session">
-          🗑️ Forget Everything (Reset Memory)
+          <i class="bi bi-trash" aria-hidden="true"></i>
+          Forget Everything (Reset Memory)
         </button>
       </div>
     </div>
@@ -368,12 +330,9 @@
   <dialog id="settingsModal" class="settings-modal" aria-labelledby="settingsModalTitle">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 id="settingsModalTitle" class="modal-title">Assistant Settings</h2>
+        <h2 id="settingsModalTitle" class="modal-title">Settings</h2>
         <button id="closeSettingsBtn" class="icon-btn" aria-label="Close Settings">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
         </button>
       </div>
 
@@ -385,11 +344,11 @@
         </div>
 
         <div class="setting-item">
-          <label for="themeSelect" class="setting-label">Aesthetic Theme</label>
+          <label for="themeSelect" class="setting-label">Colour Theme</label>
           <select id="themeSelect" class="setting-select">
-            <option value="theme-midnight">Alexa Midnight (Cyan / Neon Blue)</option>
-            <option value="theme-bixby">Bixby Aurora (Violet / Magenta Glow)</option>
-            <option value="theme-cyber">Cyberpunk Amber (Gold / Dark Charcoal)</option>
+            <option value="theme-pastel">Pastel Lavender</option>
+            <option value="theme-blush">Pastel Blush</option>
+            <option value="theme-sage">Pastel Sage</option>
           </select>
         </div>
 
@@ -402,14 +361,14 @@
 
         <div class="setting-item">
           <label class="setting-toggle-row">
-            <span class="setting-label">Sound Effects (Web Audio Tones)</span>
+            <span class="setting-label">Sound Effects</span>
             <input type="checkbox" id="soundFxToggle" class="custom-toggle" checked>
           </label>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button id="saveSettingsBtn" class="primary-btn">Done</button>
+        <button id="saveSettingsBtn" class="primary-btn">Save</button>
       </div>
     </div>
   </dialog>

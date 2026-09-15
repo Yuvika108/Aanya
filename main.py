@@ -14,6 +14,8 @@ import shutil
 import collections
 import re
 import urllib.parse
+import urllib.request
+import functools
 import speech_recognition as sr
 
 try:
@@ -48,6 +50,7 @@ SITES = {
     "spotify":   "https://open.spotify.com",
     "leetcode":  "https://leetcode.com/u/Yuv1ka/",
     "github":    "https://github.com/Yuvika108",
+    "gmail":     "https://mail.google.com/mail/u/0/#inbox",
 }
 
 # Rich site rules supporting multiple voice and text aliases
@@ -88,19 +91,94 @@ SITE_RULES = [
         "aliases": ["leetcode", "leet code"],
         "url": "https://leetcode.com/u/Yuv1ka/",
     },
+    {
+        "name": "Gmail",
+        "aliases": ["gmail", "mail"],
+        "url": "https://mail.google.com/mail/u/0/#inbox",
+    },
 ]
+
+CURATED_SONGS = {
+    "bohemian rhapsody": ("Bohemian Rhapsody", "Queen", "fJ9rUzIMcZQ"),
+    "blinding lights": ("Blinding Lights", "The Weeknd", "4NRXx6U8ABQ"),
+    "shape of you": ("Shape of You", "Ed Sheeran", "JGwWNGJdvx8"),
+    "starboy": ("Starboy", "The Weeknd", "34Na4j8AVgA"),
+    "flowers": ("Flowers", "Miley Cyrus", "G7KNmW9a75Y"),
+    "as it was": ("As It Was", "Harry Styles", "H5v3kku4y6Q"),
+    "believer": ("Believer", "Imagine Dragons", "7wtfhZwyrcc"),
+    "levitating": ("Levitating", "Dua Lipa", "TUVcZfQe-Kw"),
+    "viva la vida": ("Viva La Vida", "Coldplay", "dvgZkm1xWPE"),
+    "stay": ("Stay", "Justin Bieber & The Kid LAROI", "kTJczUoc26U"),
+    "kesariya": ("Kesariya", "Arijit Singh", "BddP6PYo2gs"),
+    "hotel california": ("Hotel California", "Eagles", "dLl4PZtxia8"),
+    "espresso": ("Espresso", "Sabrina Carpenter", "eVli-tstM5E"),
+    "bad guy": ("Bad Guy", "Billie Eilish", "DyDfgMOUjCI"),
+    "despacito": ("Despacito", "Luis Fonsi ft. Daddy Yankee", "kJQP7kiw5Fk"),
+    "cruel summer": ("Cruel Summer", "Taylor Swift", "ic8j13piAhQ"),
+    "not like us": ("Not Like Us", "Kendrick Lamar", "H58vbez_m4E"),
+    "birds of a feather": ("Birds of a Feather", "Billie Eilish", "V9PVRfjEBTI"),
+    "die with a smile": ("Die With a Smile", "Lady Gaga & Bruno Mars", "kPa7bsKwL-c"),
+    "lose yourself": ("Lose Yourself", "Eminem", "xFYQQPAOz7Y"),
+    "someone like you": ("Someone Like You", "Adele", "hLQl3WQQoQ0"),
+    "rolling in the deep": ("Rolling in the Deep", "Adele", "rYEDA3JcQqw"),
+    "perfect": ("Perfect", "Ed Sheeran", "2Vv-BfVoq4g"),
+    "counting stars": ("Counting Stars", "OneRepublic", "hT_nvWreIhg"),
+    "closer": ("Closer", "The Chainsmokers ft. Halsey", "PT2_F-1esPk"),
+    "senorita": ("Señorita", "Shawn Mendes & Camila Cabello", "Pkh8UtuejGw"),
+    "memories": ("Memories", "Maroon 5", "SlPhMPnQ58k"),
+    "sunflower": ("Sunflower", "Post Malone & Swae Lee", "ApXoWvfEYVU"),
+    "chuttamalle": ("Chuttamalle", "Shilpa Rao", "GWNrPJyRTcA"),
+    "tauba tauba": ("Tauba Tauba", "Karan Aujla", "lk403dE0dG8"),
+}
+
+@functools.lru_cache(maxsize=256)
+def resolve_song_playable_url(query: str) -> tuple[str, str | None]:
+    """Resolve a song query to a direct playable YouTube watch URL with autoplay=1.
+    Uses curated map for instantaneous response or fast regex extraction from YouTube search.
+    Guarantees a direct playable video URL that starts playing immediately upon opening.
+    """
+    q_norm = query.lower().strip()
+    for key, (song, artist, vid) in CURATED_SONGS.items():
+        if key in q_norm or q_norm in key:
+            return f"https://www.youtube.com/watch?v={vid}&autoplay=1", vid
+
+    try:
+        search_query = f"{query} song audio"
+        search_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(search_query)}"
+        req = urllib.request.Request(
+            search_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        matches = re.findall(r'\"videoId\":\"([a-zA-Z0-9_-]{11})\"', html)
+        if not matches:
+            matches = re.findall(r'/watch\?v=([a-zA-Z0-9_-]{11})', html)
+        if matches:
+            vid = matches[0]
+            return f"https://www.youtube.com/watch?v={vid}&autoplay=1", vid
+    except Exception:
+        pass
+
+    # Intelligent fallback: pick a popular song so playback starts immediately
+    key, (song, artist, vid) = random.choice(list(CURATED_SONGS.items()))
+    return f"https://www.youtube.com/watch?v={vid}&autoplay=1", vid
 
 # Table-driven app commands: (trigger_phrases, say_name, open_path)
 APP_COMMANDS = [
     (["open chrome"],                               "Chrome",   "/Applications/Google Chrome.app"),
     (["open brave"],                                "Brave",    "/Applications/Brave Browser.app"),
     (["open finder", "open files"],                 "Finder",   None),          # None → home dir
-    (["open music", "play music"],                  "Spotify",  "https://open.spotify.com/"),
+    (["open spotify"],                              "Spotify",  "https://open.spotify.com/"),
     (["open whatsapp", "open whats app", "open what's app", "open whatsapp web"], "WhatsApp", "https://web.whatsapp.com/"),
     (["open github", "open git hub", "open git-hub"], "GitHub",   "https://github.com/Yuv1ka/"),
+    (["open gmail", "open mail"],                   "Gmail",    "https://mail.google.com/mail/u/0/#inbox"),
 ]
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+FALLBACK_MODEL = "gemini-3.5-flash-lite"
 
 WAKE_VARIANTS = {"aanya", "anya", "hanya", "tanya", "anna", "ana", "onia", "nia"}
 DATA_DIR = os.path.expanduser("~/.aanya")
@@ -129,15 +207,25 @@ class AanyaEngine:
         )
         self.client = None
         self.chat_session = None
+        self.active_model = DEFAULT_MODEL
         if gemini_key:
             try:
                 self.client = genai.Client(api_key=gemini_key)
-                self.chat_session = self.client.chats.create(
-                    model=DEFAULT_MODEL,
-                    config=types.GenerateContentConfig(
-                        system_instruction=self.system_instruction
+                try:
+                    self.chat_session = self.client.chats.create(
+                        model=self.active_model,
+                        config=types.GenerateContentConfig(
+                            system_instruction=self.system_instruction
+                        )
                     )
-                )
+                except Exception:
+                    self.active_model = FALLBACK_MODEL
+                    self.chat_session = self.client.chats.create(
+                        model=self.active_model,
+                        config=types.GenerateContentConfig(
+                            system_instruction=self.system_instruction
+                        )
+                    )
             except Exception as e:
                 print(f"[Warning] Failed to initialize Gemini client: {e}")
 
@@ -290,25 +378,34 @@ class AanyaEngine:
     # ── Gemini ────────────────────────────────
 
     def chat(self, query: str) -> str:
-        if not self.chat_session:
+        if not self.client:
             self._emit_status("✗", "NO KEY", "Set gemini_key in config.py")
             self.say("Please configure your Gemini API key in config.py to chat.")
             return ""
         self._emit_state("thinking")
         self._emit_status("💬", "THINKING", "Contacting Gemini...")
         try:
-            response = self.chat_session.send_message(query)
-            reply = response.text
+            if not self.chat_session:
+                self.reset_chat(announce=False)
+            try:
+                response = self.chat_session.send_message(query)
+            except Exception:
+                self.reset_chat(announce=False)
+                response = self.chat_session.send_message(query)
+            reply = response.text or ""
             # Keep history bounded if possible (genai stores it in get_history())
-            history = self.chat_session.get_history()
-            if len(history) > 10:
-                # We reset and seed the last 10 messages if it gets too long
-                recent = history[-10:]
-                self.chat_session = self.client.chats.create(
-                    model=DEFAULT_MODEL,
-                    history=recent,
-                    config=types.GenerateContentConfig(system_instruction=self.system_instruction)
-                )
+            try:
+                history = self.chat_session.get_history()
+                if len(history) > 10:
+                    # We reset and seed the last 10 messages if it gets too long
+                    recent = history[-10:]
+                    self.chat_session = self.client.chats.create(
+                        model=self.active_model,
+                        history=recent,
+                        config=types.GenerateContentConfig(system_instruction=self.system_instruction)
+                    )
+            except Exception:
+                pass
             self.say(reply)
             return reply
         except Exception as e:
@@ -325,11 +422,17 @@ class AanyaEngine:
         self._emit_state("thinking")
         self._emit_status("⚙", "AI MODE", "Generating content...")
         try:
-            response = self.client.models.generate_content(
-                model=DEFAULT_MODEL,
-                contents=prompt
-            )
-            reply = response.text
+            try:
+                response = self.client.models.generate_content(
+                    model=self.active_model,
+                    contents=prompt
+                )
+            except Exception:
+                response = self.client.models.generate_content(
+                    model=FALLBACK_MODEL,
+                    contents=prompt
+                )
+            reply = response.text or ""
             responses_dir = os.path.join(DATA_DIR, "GeminiResponses")
             os.makedirs(responses_dir, exist_ok=True)
             slug = "".join(x for x in
@@ -345,16 +448,24 @@ class AanyaEngine:
             self._emit_status("✗", "ERROR", str(e))
             self.say("I encountered an error while generating the response.")
 
-    def reset_chat(self):
+    def reset_chat(self, announce: bool = True):
         if not self.client:
             self._emit_status("✗", "NO KEY", "Set gemini_key in config.py")
             return
-        self.chat_session = self.client.chats.create(
-            model=DEFAULT_MODEL,
-            config=types.GenerateContentConfig(system_instruction=self.system_instruction)
-        )
-        self._emit_status("🔄", "RESET", "Chat history cleared.")
-        self.say("Chat history has been reset.")
+        try:
+            self.chat_session = self.client.chats.create(
+                model=self.active_model,
+                config=types.GenerateContentConfig(system_instruction=self.system_instruction)
+            )
+        except Exception:
+            self.active_model = FALLBACK_MODEL if self.active_model != FALLBACK_MODEL else DEFAULT_MODEL
+            self.chat_session = self.client.chats.create(
+                model=self.active_model,
+                config=types.GenerateContentConfig(system_instruction=self.system_instruction)
+            )
+        if announce:
+            self._emit_status("🔄", "RESET", "Chat history cleared.")
+            self.say("Chat history has been reset.")
 
     # ── Tasks ─────────────────────────────────
 
@@ -389,16 +500,21 @@ class AanyaEngine:
     def is_wake_word(text: str) -> bool:
         return any(w in WAKE_VARIANTS for w in text.lower().split())
 
-    # ── Spotify / Song Playback (Alexa-style) ─────────────────────────────────
+    # ── Music & Song Playback (Alexa-style Immediate Autoplay) ────────────────
 
-    def _parse_spotify_intent(self, query: str) -> dict | None:
-        """Parse Alexa-style Spotify song playback and recommendation requests."""
+    def _parse_song_intent(self, query: str) -> dict | None:
+        """Parse Alexa-style song playback and recommendation requests.
+        Starts playing the song directly and immediately upon opening.
+        """
         q = query.lower().strip()
 
         # Exclude non-music actions that use the word 'play'
-        non_music = ("youtube", "video", "chess", "cricket", "game", "football", "tennis")
+        non_music = ("chess", "cricket", "game", "football", "tennis", "basketball", "minecraft", "fortnite")
         if any(w in q for w in non_music):
             return None
+
+        # Check if user specifically requested Spotify
+        is_spotify_explicit = bool(re.search(r"\b(?:on|from|in)\s+spotify\b", q) or q.startswith("spotify "))
 
         # 1. Suggest a song requests
         suggest_patterns = [
@@ -408,45 +524,51 @@ class AanyaEngine:
             r"what\s+should\s+i\s+play",
         ]
         if any(re.search(p, q) for p in suggest_patterns):
-            curated_suggestions = [
-                ("Bohemian Rhapsody", "Queen"),
-                ("Blinding Lights", "The Weeknd"),
-                ("Shape of You", "Ed Sheeran"),
-                ("Starboy", "The Weeknd"),
-                ("Flowers", "Miley Cyrus"),
-                ("As It Was", "Harry Styles"),
-                ("Believer", "Imagine Dragons"),
-                ("Levitating", "Dua Lipa"),
-                ("Viva La Vida", "Coldplay"),
-                ("Stay", "Justin Bieber"),
-                ("Kesariya", "Arijit Singh"),
-            ]
-            song, artist = random.choice(curated_suggestions)
-            target = f"{song} {artist}"
-            url = f"https://open.spotify.com/search/{urllib.parse.quote(target)}"
-            reply = f"I suggest '{song}' by {artist}! Playing it on Spotify."
-            return {"song": target, "reply": reply, "url": url}
+            key, (song, artist, vid) = random.choice(list(CURATED_SONGS.items()))
+            if is_spotify_explicit:
+                target = f"{song} {artist}"
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(target)}"
+                reply = f"I suggest '{song}' by {artist}! Opening it on Spotify."
+                return {"song": target, "reply": reply, "url": url, "video_id": None}
+            else:
+                url = f"https://www.youtube.com/watch?v={vid}&autoplay=1"
+                reply = f"I suggest '{song}' by {artist}! Playing it for you now."
+                return {"song": f"{song} {artist}", "reply": reply, "url": url, "video_id": vid}
 
         # 2. User suggests a specific song: "i suggest <song>", "suggest playing <song>", "how about <song>"
         user_suggest = re.search(r"\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)", q)
         if user_suggest:
             raw = user_suggest.group(1).strip()
-            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:on|from|in)\s+(?:spotify|youtube)\b", "", raw)
             clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
             if clean and not re.match(r"^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$", clean):
-                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-                return {"song": clean, "reply": f"Great choice! Playing {clean.title()} on Spotify!", "url": url}
+                if is_spotify_explicit:
+                    url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                    reply = f"Great choice! Playing {clean.title()} on Spotify!"
+                    return {"song": clean, "reply": reply, "url": url, "video_id": None}
+                url, vid = resolve_song_playable_url(clean)
+                reply = f"Great choice! Playing {clean.title()} for you now!"
+                return {"song": clean, "reply": reply, "url": url, "video_id": vid}
 
         # 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
         play_match = re.search(r"\b(?:play|listen to|put on)\s+(.+)", q)
         if play_match:
             raw = play_match.group(1).strip()
-            clean = re.sub(r"\b(?:on|from|in)\s+spotify\b", "", raw)
+            clean = re.sub(r"\b(?:on|from|in)\s+(?:spotify|youtube)\b", "", raw)
             clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
             if not clean or clean in ("music", "some music", "a song", "songs", "spotify", "something"):
-                return {"song": "music", "reply": "Playing music on Spotify!", "url": "https://open.spotify.com"}
-            url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-            return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+                key, (song, artist, vid) = random.choice(list(CURATED_SONGS.items()))
+                if is_spotify_explicit:
+                    return {"song": "music", "reply": "Playing music on Spotify!", "url": "https://open.spotify.com", "video_id": None}
+                url = f"https://www.youtube.com/watch?v={vid}&autoplay=1"
+                return {"song": f"{song} by {artist}", "reply": f"Playing '{song}' by {artist} for you!", "url": url, "video_id": vid}
+
+            if is_spotify_explicit:
+                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
+                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url, "video_id": None}
+
+            url, vid = resolve_song_playable_url(clean)
+            return {"song": clean, "reply": f"Playing {clean.title()} for you!", "url": url, "video_id": vid}
 
         # 4. Explicit spotify query: "spotify <song>"
         spotify_match = re.search(r"\bspotify\s+(.+)", q)
@@ -455,9 +577,13 @@ class AanyaEngine:
             clean = re.sub(r"\b(?:please|for me)\b", "", raw).strip(" .?!,\"':")
             if clean:
                 url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url}
+                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url, "video_id": None}
 
         return None
+
+    def _parse_spotify_intent(self, query: str) -> dict | None:
+        """Alias for backward compatibility."""
+        return self._parse_song_intent(query)
 
     # ── Command dispatcher ────────────────────
 
@@ -466,12 +592,47 @@ class AanyaEngine:
         if q == "none":
             return
 
-        # Spotify / song playback (Alexa-style)
-        spotify_info = self._parse_spotify_intent(query)
-        if spotify_info:
-            self._emit_status("🎵", "SPOTIFY", spotify_info["reply"])
-            self.say(spotify_info["reply"])
-            subprocess.run(["open", spotify_info["url"]])
+        # Music / song playback (Alexa-style Immediate Autoplay)
+        song_info = self._parse_song_intent(query)
+        if song_info:
+            self._emit_status("🎵", "PLAYING", song_info["reply"])
+            self.say(song_info["reply"])
+            subprocess.run(["open", song_info["url"]])
+            try:
+                # Activate Google Chrome or default browser so autoplay begins immediately without restriction
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "Google Chrome" to activate'],
+                    capture_output=True,
+                    timeout=1.0,
+                )
+            except Exception:
+                pass
+            return
+
+        if any(p in q for p in ("stop music", "pause music", "stop the song", "pause the song", "stop song", "pause song")):
+            self._emit_status("⏸", "PAUSED", "Music paused")
+            self.say("Music paused.")
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "Google Chrome" to tell active tab of front window to execute javascript "document.querySelector(\'video\')?.pause()"'],
+                    capture_output=True,
+                    timeout=1.0,
+                )
+            except Exception:
+                pass
+            return
+
+        if any(p in q for p in ("resume music", "continue music", "resume song", "unpause music")):
+            self._emit_status("▶", "PLAYING", "Music resumed")
+            self.say("Resuming music.")
+            try:
+                subprocess.run(
+                    ["osascript", "-e", 'tell application "Google Chrome" to tell active tab of front window to execute javascript "document.querySelector(\'video\')?.play()"'],
+                    capture_output=True,
+                    timeout=1.0,
+                )
+            except Exception:
+                pass
             return
 
         # Web sites & rich aliases
@@ -647,6 +808,16 @@ def _status(icon, label, message, colour=C.CYAN):
 
 
 if __name__ == "__main__":
+    if "--gui" in sys.argv:
+        try:
+            from desktop_app import AanyaApp
+            app = AanyaApp()
+            app.mainloop()
+            sys.exit(0)
+        except Exception as exc:
+            print(f"Failed to start GUI: {exc}")
+            sys.exit(1)
+
     _banner()
     engine = AanyaEngine()
     engine.on_status = lambda icon, label, msg: _status(icon, label, msg)

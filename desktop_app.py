@@ -248,7 +248,7 @@ class AanyaApp(ctk.CTk):
         title_box = ctk.CTkFrame(brand, fg_color="transparent")
         title_box.pack(side="left")
         ctk.CTkLabel(title_box, text="Aanya", font=(FONT, 16, "bold"), text_color=TEXT_PRIMARY).pack(anchor="w")
-        ctk.CTkLabel(title_box, text="Voice Assistant · Gemini 1.5 Flash",
+        ctk.CTkLabel(title_box, text="Voice Assistant · Gemini 3.6 Flash",
                      font=(FONT, 11), text_color=TEXT_DIM).pack(anchor="w")
 
         # Right controls

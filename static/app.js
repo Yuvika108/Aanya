@@ -75,7 +75,19 @@
     emptyFactsNotice: document.getElementById('emptyFactsNotice'),
     memInterestsTags: document.getElementById('memInterestsTags'),
     emptyInterestsNotice: document.getElementById('emptyInterestsNotice'),
-    clearMemoryBtn: document.getElementById('clearMemoryBtn')
+    clearMemoryBtn: document.getElementById('clearMemoryBtn'),
+    // Alexa Music Player references
+    alexaMusicDock: document.getElementById('alexaMusicDock'),
+    musicDockArt: document.getElementById('musicDockArt'),
+    musicEqualizer: document.getElementById('musicEqualizer'),
+    musicDockTitle: document.getElementById('musicDockTitle'),
+    musicPlayPauseBtn: document.getElementById('musicPlayPauseBtn'),
+    musicPlayPauseIcon: document.getElementById('musicPlayPauseIcon'),
+    musicMuteBtn: document.getElementById('musicMuteBtn'),
+    musicMuteIcon: document.getElementById('musicMuteIcon'),
+    musicOpenExternalBtn: document.getElementById('musicOpenExternalBtn'),
+    musicCloseBtn: document.getElementById('musicCloseBtn'),
+    alexaMusicIframe: document.getElementById('alexaMusicIframe')
   };
 
   // ── Initialize Orb Visualizer ──────────────────────────────────────────────
@@ -829,6 +841,11 @@
       aliases: ['leetcode', 'leet code'],
       url: 'https://leetcode.com/u/Yuv1ka/',
     },
+    {
+      name: 'Gmail',
+      aliases: ['gmail', 'mail', 'inbox', 'google mail'],
+      url: 'https://mail.google.com/mail/u/0/#inbox',
+    },
   ];
 
   function getSiteOpenUrl(rawText) {
@@ -846,59 +863,183 @@
 
   let _lastSynchronouslyOpenedUrl = null;
 
-  const CURATED_SPOTIFY_SUGGESTIONS = [
-    'Bohemian Rhapsody Queen',
-    'Blinding Lights The Weeknd',
-    'Shape of You Ed Sheeran',
-    'Starboy The Weeknd',
-    'Flowers Miley Cyrus',
-    'As It Was Harry Styles',
-    'Believer Imagine Dragons',
-    'Levitating Dua Lipa',
-    'Viva La Vida Coldplay',
-    'Stay Justin Bieber',
-    'Kesariya Arijit Singh'
-  ];
+  const CURATED_SONGS_CLIENT = {
+    'bohemian rhapsody': { title: 'Bohemian Rhapsody', artist: 'Queen', vid: 'fJ9rUzIMcZQ' },
+    'blinding lights': { title: 'Blinding Lights', artist: 'The Weeknd', vid: '4NRXx6U8ABQ' },
+    'shape of you': { title: 'Shape of You', artist: 'Ed Sheeran', vid: 'JGwWNGJdvx8' },
+    'starboy': { title: 'Starboy', artist: 'The Weeknd', vid: '34Na4j8AVgA' },
+    'flowers': { title: 'Flowers', artist: 'Miley Cyrus', vid: 'G7KNmW9a75Y' },
+    'as it was': { title: 'As It Was', artist: 'Harry Styles', vid: 'H5v3kku4y6Q' },
+    'believer': { title: 'Believer', artist: 'Imagine Dragons', vid: '7wtfhZwyrcc' },
+    'levitating': { title: 'Levitating', artist: 'Dua Lipa', vid: 'TUVcZfQe-Kw' },
+    'viva la vida': { title: 'Viva La Vida', artist: 'Coldplay', vid: 'dvgZkm1xWPE' },
+    'stay': { title: 'Stay', artist: 'Justin Bieber & The Kid LAROI', vid: 'kTJczUoc26U' },
+    'kesariya': { title: 'Kesariya', artist: 'Arijit Singh', vid: 'BddP6PYo2gs' },
+    'hotel california': { title: 'Hotel California', artist: 'Eagles', vid: 'dLl4PZtxia8' },
+    'espresso': { title: 'Espresso', artist: 'Sabrina Carpenter', vid: 'eVli-tstM5E' },
+    'bad guy': { title: 'Bad Guy', artist: 'Billie Eilish', vid: 'DyDfgMOUjCI' },
+    'despacito': { title: 'Despacito', artist: 'Luis Fonsi', vid: 'kJQP7kiw5Fk' },
+    'cruel summer': { title: 'Cruel Summer', artist: 'Taylor Swift', vid: 'ic8j13piAhQ' },
+    'not like us': { title: 'Not Like Us', artist: 'Kendrick Lamar', vid: 'H58vbez_m4E' },
+    'birds of a feather': { title: 'Birds of a Feather', artist: 'Billie Eilish', vid: 'V9PVRfjEBTI' },
+    'die with a smile': { title: 'Die With a Smile', artist: 'Lady Gaga & Bruno Mars', vid: 'kPa7bsKwL-c' },
+    'lose yourself': { title: 'Lose Yourself', artist: 'Eminem', vid: 'xFYQQPAOz7Y' },
+    'someone like you': { title: 'Someone Like You', artist: 'Adele', vid: 'hLQl3WQQoQ0' },
+    'rolling in the deep': { title: 'Rolling in the Deep', artist: 'Adele', vid: 'rYEDA3JcQqw' },
+    'perfect': { title: 'Perfect', artist: 'Ed Sheeran', vid: '2Vv-BfVoq4g' },
+    'counting stars': { title: 'Counting Stars', artist: 'OneRepublic', vid: 'hT_nvWreIhg' },
+    'closer': { title: 'Closer', artist: 'The Chainsmokers', vid: 'PT2_F-1esPk' },
+    'senorita': { title: 'Señorita', artist: 'Shawn Mendes & Camila Cabello', vid: 'Pkh8UtuejGw' },
+    'memories': { title: 'Memories', artist: 'Maroon 5', vid: 'SlPhMPnQ58k' },
+    'sunflower': { title: 'Sunflower', artist: 'Post Malone & Swae Lee', vid: 'ApXoWvfEYVU' },
+    'chuttamalle': { title: 'Chuttamalle', artist: 'Shilpa Rao', vid: 'GWNrPJyRTcA' },
+    'tauba tauba': { title: 'Tauba Tauba', artist: 'Karan Aujla', vid: 'lk403dE0dG8' },
+  };
 
-  function getSpotifySongUrl(rawText) {
+  // ── Alexa Music Player Controller ─────────────────────────────────────────
+  let _musicState = {
+    isPlaying: false,
+    isMuted: false,
+    currentVideoId: null,
+    currentSong: null,
+    currentUrl: null,
+  };
+
+  function playAlexaMusic(info) {
+    if (!DOM.alexaMusicDock || !info) return;
+    const videoId = info.video_id || info.videoId;
+    if (!videoId) return;
+
+    _musicState.isPlaying = true;
+    _musicState.isMuted = false;
+    _musicState.currentVideoId = videoId;
+    _musicState.currentSong = info.song || 'Playing Music';
+    _musicState.currentUrl = info.url || `https://www.youtube.com/watch?v=${videoId}&autoplay=1`;
+
+    if (DOM.musicDockTitle) DOM.musicDockTitle.textContent = _musicState.currentSong;
+    if (DOM.musicDockArt) DOM.musicDockArt.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+    if (DOM.musicOpenExternalBtn) DOM.musicOpenExternalBtn.href = _musicState.currentUrl;
+
+    if (DOM.musicPlayPauseIcon) DOM.musicPlayPauseIcon.className = 'bi bi-pause-fill';
+    if (DOM.musicEqualizer) DOM.musicEqualizer.classList.add('is-playing');
+    if (DOM.musicMuteIcon) DOM.musicMuteIcon.className = 'bi bi-volume-up-fill';
+
+    if (DOM.alexaMusicIframe) {
+      DOM.alexaMusicIframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&playsinline=1`;
+    }
+
+    DOM.alexaMusicDock.style.display = 'block';
+  }
+
+  function pauseAlexaMusic() {
+    _musicState.isPlaying = false;
+    if (DOM.musicEqualizer) DOM.musicEqualizer.classList.remove('is-playing');
+    if (DOM.musicPlayPauseIcon) DOM.musicPlayPauseIcon.className = 'bi bi-play-fill';
+    _sendIframeCommand('pauseVideo');
+  }
+
+  function resumeAlexaMusic() {
+    _musicState.isPlaying = true;
+    if (DOM.musicEqualizer) DOM.musicEqualizer.classList.add('is-playing');
+    if (DOM.musicPlayPauseIcon) DOM.musicPlayPauseIcon.className = 'bi bi-pause-fill';
+    _sendIframeCommand('playVideo');
+  }
+
+  function toggleAlexaMusicPlayPause() {
+    if (_musicState.isPlaying) {
+      pauseAlexaMusic();
+    } else {
+      resumeAlexaMusic();
+    }
+  }
+
+  function toggleAlexaMusicMute() {
+    _musicState.isMuted = !_musicState.isMuted;
+    if (_musicState.isMuted) {
+      if (DOM.musicMuteIcon) DOM.musicMuteIcon.className = 'bi bi-volume-mute-fill';
+      _sendIframeCommand('mute');
+    } else {
+      if (DOM.musicMuteIcon) DOM.musicMuteIcon.className = 'bi bi-volume-up-fill';
+      _sendIframeCommand('unMute');
+    }
+  }
+
+  function closeAlexaMusic() {
+    _musicState.isPlaying = false;
+    _sendIframeCommand('stopVideo');
+    if (DOM.alexaMusicIframe) DOM.alexaMusicIframe.src = '';
+    if (DOM.alexaMusicDock) DOM.alexaMusicDock.style.display = 'none';
+  }
+
+  function _sendIframeCommand(func) {
+    if (!DOM.alexaMusicIframe || !DOM.alexaMusicIframe.contentWindow) return;
+    try {
+      DOM.alexaMusicIframe.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: func,
+        args: []
+      }), '*');
+    } catch (e) {}
+  }
+
+  function getMusicPlaybackIntent(rawText) {
     const q = rawText.toLowerCase().trim();
 
     // Exclude non-music actions that use the word 'play'
-    const nonMusic = ['youtube', 'video', 'chess', 'cricket', 'game', 'football', 'tennis'];
+    const nonMusic = ['chess', 'cricket', 'game', 'football', 'tennis', 'basketball', 'minecraft', 'fortnite'];
     if (nonMusic.some(w => q.includes(w))) return null;
+
+    // Direct pause / resume commands
+    if (/^(?:stop|pause)\s+(?:music|song|the music|the song)/i.test(q)) {
+      return { action: 'pause' };
+    }
+    if (/^(?:resume|continue|unpause)\s+(?:music|song|the music|the song)/i.test(q)) {
+      return { action: 'resume' };
+    }
+
+    const isSpotifyExplicit = /\b(?:on|from|in)\s+spotify\b/i.test(q) || q.startsWith('spotify ');
 
     // 1. Suggest song / music patterns
     if (/(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)/i.test(q) ||
       /what\s+song\s+should\s+i\s+listen\s+to/i.test(q) ||
       /give\s+me\s+a\s+(?:good\s+)?song/i.test(q) ||
       /what\s+should\s+i\s+play/i.test(q)) {
-      const picked = CURATED_SPOTIFY_SUGGESTIONS[Math.floor(Math.random() * CURATED_SPOTIFY_SUGGESTIONS.length)];
-      return `https://open.spotify.com/search/${encodeURIComponent(picked)}`;
+      const keys = Object.keys(CURATED_SONGS_CLIENT);
+      const pickedKey = keys[Math.floor(Math.random() * keys.length)];
+      const item = CURATED_SONGS_CLIENT[pickedKey];
+      if (isSpotifyExplicit) {
+        return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(item.title + ' ' + item.artist)}`, song: item.title, videoId: null };
+      }
+      return { isSpotify: false, url: `https://www.youtube.com/watch?v=${item.vid}&autoplay=1`, song: `${item.title} by ${item.artist}`, videoId: item.vid };
     }
 
     // 2. User suggests a specific song: "i suggest <song>", "how about playing <song>", "what about <song>"
     const userSuggest = q.match(/\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)/i);
     if (userSuggest) {
-      let clean = userSuggest[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
+      let clean = userSuggest[1].replace(/\b(?:on|from|in)\s+(?:spotify|youtube)\b/gi, '')
         .replace(/\b(?:please|for me)\b/gi, '')
-        .trim()
-        .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+        .trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (clean && !/^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$/i.test(clean)) {
-        return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+        return _resolveClientSong(clean, isSpotifyExplicit);
       }
     }
 
     // 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
     const playMatch = q.match(/\b(?:play|listen to|put on)\s+(.+)/i);
     if (playMatch) {
-      let clean = playMatch[1].replace(/\b(?:on|from|in)\s+spotify\b/gi, '')
+      let clean = playMatch[1].replace(/\b(?:on|from|in)\s+(?:spotify|youtube)\b/gi, '')
         .replace(/\b(?:please|for me)\b/gi, '')
-        .trim()
-        .replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+        .trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (!clean || /^(?:music|some music|a song|songs|spotify|something)$/i.test(clean)) {
-        return 'https://open.spotify.com';
+        const keys = Object.keys(CURATED_SONGS_CLIENT);
+        const pickedKey = keys[Math.floor(Math.random() * keys.length)];
+        const item = CURATED_SONGS_CLIENT[pickedKey];
+        if (isSpotifyExplicit) {
+          return { isSpotify: true, url: 'https://open.spotify.com', song: 'Music', videoId: null };
+        }
+        return { isSpotify: false, url: `https://www.youtube.com/watch?v=${item.vid}&autoplay=1`, song: `${item.title} by ${item.artist}`, videoId: item.vid };
       }
-      return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+      return _resolveClientSong(clean, isSpotifyExplicit);
     }
 
     // 4. Explicit spotify command: "spotify <song>"
@@ -906,11 +1047,34 @@
     if (spotifyMatch) {
       let clean = spotifyMatch[1].replace(/\b(?:please|for me)\b/gi, '').trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (clean) {
-        return `https://open.spotify.com/search/${encodeURIComponent(clean)}`;
+        return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(clean)}`, song: clean, videoId: null };
       }
     }
 
     return null;
+  }
+
+  function _resolveClientSong(clean, isSpotifyExplicit) {
+    if (isSpotifyExplicit) {
+      return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(clean)}`, song: clean, videoId: null };
+    }
+    const cleanLower = clean.toLowerCase();
+    for (const [key, item] of Object.entries(CURATED_SONGS_CLIENT)) {
+      if (cleanLower.includes(key) || key.includes(cleanLower)) {
+        return {
+          isSpotify: false,
+          url: `https://www.youtube.com/watch?v=${item.vid}&autoplay=1`,
+          song: `${item.title} by ${item.artist}`,
+          videoId: item.vid
+        };
+      }
+    }
+    return {
+      isSpotify: false,
+      url: `https://www.youtube.com/results?search_query=${encodeURIComponent(clean + ' song audio')}&autoplay=1`,
+      song: clean,
+      videoId: null
+    };
   }
 
   async function handleUserQuery(query) {
@@ -919,14 +1083,27 @@
 
     if (!text && attachments.length === 0) return;
 
-    // ── URL & Spotify opener: must fire window.open() HERE, in the direct user-gesture
+    // ── URL & Alexa Music opener: must fire window.open() HERE, in the direct user-gesture
     //    context, before any async operations — otherwise browsers block it.
     if (text && attachments.length === 0) {
       _lastSynchronouslyOpenedUrl = null;
-      const spotifyUrl = getSpotifySongUrl(text);
-      if (spotifyUrl) {
-        _lastSynchronouslyOpenedUrl = spotifyUrl;
-        window.open(spotifyUrl, '_blank', 'noopener,noreferrer');
+      const musicIntent = getMusicPlaybackIntent(text);
+      if (musicIntent) {
+        if (musicIntent.action === 'pause') {
+          pauseAlexaMusic();
+        } else if (musicIntent.action === 'resume') {
+          resumeAlexaMusic();
+        } else if (musicIntent.isSpotify) {
+          _lastSynchronouslyOpenedUrl = musicIntent.url;
+          window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+        } else {
+          // Alexa-style immediate playback
+          if (musicIntent.videoId) {
+            playAlexaMusic({ song: musicIntent.song, videoId: musicIntent.videoId, url: musicIntent.url });
+          }
+          _lastSynchronouslyOpenedUrl = musicIntent.url;
+          window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+        }
       } else {
         const siteUrl = getSiteOpenUrl(text);
         if (siteUrl) {
@@ -1047,7 +1224,20 @@
               let packet;
               try { packet = JSON.parse(jsonStr); } catch { continue; }
 
-              if (packet.type === 'token') {
+              if (packet.type === 'meta') {
+                if (packet.action) finalAction = packet.action;
+                if (packet.action_data) finalData = packet.action_data;
+                if (packet.action === 'play-music' && packet.action_data) {
+                  playAlexaMusic(packet.action_data);
+                }
+                if (packet.action === 'pause-music') {
+                  pauseAlexaMusic();
+                }
+                if (packet.action === 'resume-music') {
+                  resumeAlexaMusic();
+                }
+                continue;
+              } else if (packet.type === 'token') {
                 const newText = (packet.text ?? packet.token ?? '');
                 if (!newText) continue;
 
@@ -1107,6 +1297,9 @@
           }
 
           // Side-effects
+          if (finalAction === 'play-music' && finalData) playAlexaMusic(finalData);
+          if (finalAction === 'pause-music') pauseAlexaMusic();
+          if (finalAction === 'resume-music') resumeAlexaMusic();
           if (finalAction === 'open-url' && finalData && finalData !== _lastSynchronouslyOpenedUrl) window.open(finalData, '_blank');
           _lastSynchronouslyOpenedUrl = null;
           if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
@@ -1143,6 +1336,9 @@
       const reply = data.reply || "I didn't receive a response.";
       appendAssistantMessage(reply, data.action, data.action_data);
       speakResponse(reply);
+      if (data.action === 'play-music' && data.action_data) playAlexaMusic(data.action_data);
+      if (data.action === 'pause-music') pauseAlexaMusic();
+      if (data.action === 'resume-music') resumeAlexaMusic();
       if (data.action === 'open-url' && data.action_data && data.action_data !== _lastSynchronouslyOpenedUrl) window.open(data.action_data, '_blank');
       _lastSynchronouslyOpenedUrl = null;
       if (data.action === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
@@ -1488,6 +1684,11 @@
         stopSpeaking();
       }
     });
+
+    // ── Alexa Music Player Controls ──────────────────────────────────────────
+    DOM.musicPlayPauseBtn?.addEventListener('click', toggleAlexaMusicPlayPause);
+    DOM.musicMuteBtn?.addEventListener('click', toggleAlexaMusicMute);
+    DOM.musicCloseBtn?.addEventListener('click', closeAlexaMusic);
 
     // ── File Upload ──────────────────────────────────────────────────────────
     DOM.attachBtn?.addEventListener('click', () => {

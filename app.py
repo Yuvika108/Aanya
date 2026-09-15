@@ -24,8 +24,9 @@ from engine import AanyaEngine
 from models import ChatRequest, ChatResponse, TaskCreateRequest, TaskListResponse
 
 load_dotenv()
+import config
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY") or getattr(config, "gemini_key", "")).strip()
 if not GEMINI_API_KEY:
     raise RuntimeError(
         "GEMINI_API_KEY is not set. Create a .env file or set it in your "

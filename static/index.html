@@ -160,6 +160,52 @@
       </section>
     </main>
 
+    <!-- Alexa-Style Floating Music Player Dock -->
+    <section id="alexaMusicDock" class="alexa-music-dock" style="display:none;" aria-label="Alexa Music Player">
+      <div class="music-dock-inner">
+        <div class="music-dock-media">
+          <div class="music-art-wrapper">
+            <img id="musicDockArt" src="" alt="Album Art" class="music-dock-art">
+            <div id="musicEqualizer" class="music-equalizer is-playing" aria-hidden="true">
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+              <span class="eq-bar"></span>
+            </div>
+          </div>
+          <div class="music-meta">
+            <div class="music-badge"><i class="bi bi-music-note-beamed" aria-hidden="true"></i> Alexa Music</div>
+            <span id="musicDockTitle" class="music-dock-title">Song Title</span>
+          </div>
+        </div>
+
+        <div class="music-dock-controls">
+          <button id="musicPlayPauseBtn" type="button" class="music-btn" aria-label="Pause Music" title="Play / Pause">
+            <i id="musicPlayPauseIcon" class="bi bi-pause-fill" aria-hidden="true"></i>
+          </button>
+          <button id="musicMuteBtn" type="button" class="music-btn" aria-label="Mute Audio" title="Mute / Unmute">
+            <i id="musicMuteIcon" class="bi bi-volume-up-fill" aria-hidden="true"></i>
+          </button>
+          <a id="musicOpenExternalBtn" href="#" target="_blank" rel="noopener noreferrer" class="music-btn external-link" aria-label="Open in YouTube" title="Open YouTube tab">
+            <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+          </a>
+          <button id="musicCloseBtn" type="button" class="music-btn close-btn" aria-label="Stop Music & Close Player" title="Stop & Close">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Background direct audio/video iframe player with autoplay -->
+      <div class="music-player-frame-wrapper" aria-hidden="true">
+        <iframe
+          id="alexaMusicIframe"
+          title="Alexa Music Stream"
+          allow="autoplay; encrypted-media"
+          tabindex="-1">
+        </iframe>
+      </div>
+    </section>
+
     <!-- Bottom Input Dock -->
     <footer class="input-dock" role="region" aria-label="Voice &amp; Text Input">
       <form id="chatForm" class="dock-form" role="search" onsubmit="return false;">

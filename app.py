@@ -167,6 +167,41 @@ def delete_task(session_id: str, task_number: int):
     return TaskListResponse(tasks=engine.load_tasks())
 
 
+# ── Custom Links & Shortcuts endpoints ────────────────────────────────────────
+class LinkCreateRequest(BaseModel):
+    name: str
+    url: str
+    session_id: str = "default"
+
+
+@app.get("/links")
+@app.get("/links/{session_id}")
+def get_links(session_id: str = "default"):
+    """Get all custom shortcuts/links for a given session."""
+    engine = _get_engine(session_id)
+    return {"links": engine.get_links()}
+
+
+@app.post("/links")
+def add_link(request: LinkCreateRequest):
+    """Save a new custom link that Aanya can open directly."""
+    if not request.name.strip() or not request.url.strip():
+        raise HTTPException(status_code=400, detail="Name and URL are required")
+    engine = _get_engine(request.session_id)
+    link = engine.add_link(request.name, request.url)
+    return {"link": link, "links": engine.get_links()}
+
+
+@app.delete("/links/{link_id}")
+def delete_link(link_id: str, session_id: str = "default"):
+    """Delete a custom link by ID or name."""
+    engine = _get_engine(session_id)
+    removed = engine.delete_link(link_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Link not found")
+    return {"status": "ok", "links": engine.get_links()}
+
+
 # ── Feedback & Learning endpoints ─────────────────────────────────────────────
 class FeedbackRequest(BaseModel):
     session_id: str = "default"

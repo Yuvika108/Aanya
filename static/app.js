@@ -16,6 +16,7 @@
     selectedVoiceURI: localStorage.getItem('aanya_voice_uri') || '',
     currentState: 'standby', // 'standby' | 'listening' | 'thinking' | 'speaking' | 'executing'
     tasks: [],
+    customLinks: JSON.parse(localStorage.getItem('aanya_custom_links') || '[]'),
     isListening: false,
     pendingAttachments: []   // Array of { name, mime_type, data_b64, objectUrl? }
   };
@@ -34,6 +35,18 @@
     chatStream: document.getElementById('chatStream'),
     voiceSpeakToggle: document.getElementById('voiceSpeakToggle'),
     themeToggleBtn: document.getElementById('themeToggleBtn'),
+    // Quick Links DOM References
+    linksToggleBtn: document.getElementById('linksToggleBtn'),
+    linkCountBadge: document.getElementById('linkCountBadge'),
+    linksDrawer: document.getElementById('linksDrawer'),
+    drawerLinksBadge: document.getElementById('drawerLinksBadge'),
+    closeLinksBtn: document.getElementById('closeLinksBtn'),
+    addLinkForm: document.getElementById('addLinkForm'),
+    newLinkNameInput: document.getElementById('newLinkNameInput'),
+    newLinkUrlInput: document.getElementById('newLinkUrlInput'),
+    customLinksList: document.getElementById('customLinksList'),
+    emptyLinksNotice: document.getElementById('emptyLinksNotice'),
+    // Tasks DOM References
     tasksToggleBtn: document.getElementById('tasksToggleBtn'),
     taskCountBadge: document.getElementById('taskCountBadge'),
     tasksDrawer: document.getElementById('tasksDrawer'),
@@ -808,17 +821,35 @@
   const AANYA_SITE_RULES = [
     {
       name: 'GitHub',
-      aliases: ['github', 'git hub', 'git-hub', 'gethub'],
+      aliases: ['github', 'git hub', 'git-hub', 'gethub', 'my github'],
       url: 'https://github.com/Yuvika108',
     },
     {
+      name: 'Gmail',
+      aliases: [
+        'gmail', 'google mail', 'inbox', 'email', 'emails',
+        'my email', 'my emails', 'mail', 'mails', 'my mail', 'my mails'
+      ],
+      url: 'https://mail.google.com/mail/u/0/#inbox',
+    },
+    {
+      name: 'Codolio',
+      aliases: ['codolio', 'codolio profile', 'my codolio', 'codolio tracker', 'codolio coding'],
+      url: 'https://codolio.com',
+    },
+    {
+      name: 'LinkedIn',
+      aliases: ['linkedin', 'linked in', 'my linkedin', 'my linked in', 'linkedin profile'],
+      url: 'https://www.linkedin.com',
+    },
+    {
       name: 'WhatsApp',
-      aliases: ['whatsapp', 'whats app', "what's app", 'what app', 'whatsapp web', 'whats app web'],
+      aliases: ['whatsapp', 'whats app', "what's app", 'what app', 'whatsapp web', 'whats app web', 'wa'],
       url: 'https://web.whatsapp.com/',
     },
     {
       name: 'YouTube',
-      aliases: ['youtube', 'you tube'],
+      aliases: ['youtube', 'you tube', 'yt'],
       url: 'https://www.youtube.com',
     },
     {
@@ -833,29 +864,77 @@
     },
     {
       name: 'Spotify',
-      aliases: ['spotify'],
+      aliases: ['spotify', 'spotfy'],
       url: 'https://open.spotify.com',
     },
     {
       name: 'LeetCode',
-      aliases: ['leetcode', 'leet code'],
+      aliases: ['leetcode', 'leet code', 'lc'],
       url: 'https://leetcode.com/u/Yuv1ka/',
-    },
-    {
-      name: 'Gmail',
-      aliases: ['gmail', 'mail', 'inbox', 'google mail'],
-      url: 'https://mail.google.com/mail/u/0/#inbox',
     },
   ];
 
   function getSiteOpenUrl(rawText) {
     const q = rawText.toLowerCase().trim();
-    if (q.startsWith('what is ') || q.startsWith('who is ') || q.startsWith('how to ') || q.startsWith('why is ') || q.startsWith('tell me about ')) {
+
+    // 1. Search intents
+    const gMatch = q.match(/^(?:search(?:\s+for)?\s+(.+)\s+on\s+google|search\s+google\s+for\s+(.+)|google\s+(.+))$/i);
+    if (gMatch) {
+      const target = (gMatch[1] || gMatch[2] || gMatch[3] || '').trim();
+      if (target && !target.startsWith('is ') && !target.startsWith('are ') && !target.startsWith('what ')) {
+        return { url: `https://www.google.com/search?q=${encodeURIComponent(target)}`, name: 'Google' };
+      }
+    }
+
+    const yMatch = q.match(/^(?:search(?:\s+for)?\s+(.+)\s+on\s+youtube|search\s+youtube\s+for\s+(.+))$/i);
+    if (yMatch) {
+      const target = (yMatch[1] || yMatch[2] || '').trim();
+      if (target) {
+        return { url: `https://www.youtube.com/results?search_query=${encodeURIComponent(target)}`, name: 'YouTube' };
+      }
+    }
+
+    const wMatch = q.match(/^(?:search(?:\s+for)?\s+(.+)\s+on\s+wikipedia|search\s+wikipedia\s+for\s+(.+)|wikipedia\s+(.+))$/i);
+    if (wMatch) {
+      const target = (wMatch[1] || wMatch[2] || '').trim();
+      if (target) {
+        return { url: `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(target)}`, name: 'Wikipedia' };
+      }
+    }
+
+    // 2. Exclude drafting/writing emails or conversational questions
+    if (/\b(?:draft|write|compose|send|create)\s+(?:an?\s+)?(?:email|mail|message)\b/i.test(q)) {
       return null;
     }
+    if (/^(?:what is|who is|how to|how do|why is|tell me about|explain|can you explain)\b/i.test(q)) {
+      return null;
+    }
+
+    // 3. Explicit open commands (with polite prefixes & synonyms)
+    const openMatch = q.match(/^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?(?:open|launch|go\s+to|visit|take\s+me\s+to|navigate\s+to|check|show(?:\s+me)?|view|read|access|look\s+at)\s+(.+)$/i);
+    const target = openMatch ? openMatch[1].trim() : q;
+
+    // Check custom user shortcuts first
+    if (state.customLinks && Array.isArray(state.customLinks)) {
+      for (const cl of state.customLinks) {
+        const name = (cl.name || '').trim().toLowerCase();
+        const url = (cl.url || '').trim();
+        if (!name || !url) continue;
+        const wordRegex = new RegExp(`(^|\\b)${name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(\\b|$)`, 'i');
+        if (wordRegex.test(target)) {
+          if (!openMatch && target.split(/\s+/).length > 2) continue;
+          return { url: url, name: cl.name };
+        }
+      }
+    }
+
     for (const rule of AANYA_SITE_RULES) {
-      if (rule.aliases.some(alias => q.includes(alias))) {
-        return rule.url;
+      for (const alias of rule.aliases) {
+        const wordRegex = new RegExp(`(^|\\b)${alias.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}(\\b|$)`, 'i');
+        if (wordRegex.test(target)) {
+          if (!openMatch && target.split(/\s+/).length > 2) continue;
+          return { url: rule.url, name: rule.name };
+        }
       }
     }
     return null;
@@ -982,12 +1061,39 @@
     } catch (e) {}
   }
 
+  function speakAlexaConfirmation(msg) {
+    if (!state.voiceEnabled) return;
+    try {
+      if ('speechSynthesis' in window) {
+        unlockSpeechSynthesis();
+        const utt = new SpeechSynthesisUtterance(msg);
+        const bestVoice = pickBestVoice();
+        if (bestVoice) utt.voice = bestVoice;
+        utt.rate = 1.05;
+        window.speechSynthesis.speak(utt);
+      }
+    } catch (e) {
+      console.warn('Spoken confirmation failed:', e);
+    }
+  }
+
   function getMusicPlaybackIntent(rawText) {
     const q = rawText.toLowerCase().trim();
 
+    // Exclude questions about playing or instructional queries
+    if (/\b(?:how\s+(?:to|can\s+i|do\s+i)|teach\s+me\s+to|learn\s+to|what\s+is|who\s+is|why\s+do|where\s+can\s+i)\b/i.test(q)) {
+      return null;
+    }
+
     // Exclude non-music actions that use the word 'play'
-    const nonMusic = ['chess', 'cricket', 'game', 'football', 'tennis', 'basketball', 'minecraft', 'fortnite'];
-    if (nonMusic.some(w => q.includes(w))) return null;
+    const nonMusic = [
+      'chess', 'cricket', 'game', 'games', 'football', 'tennis', 'basketball',
+      'minecraft', 'fortnite', 'poker', 'cards', 'monopoly', 'blackjack',
+      'puzzle', 'crossword', 'role', "devil's advocate", 'along', 'dead',
+      'dumb', 'fair', 'safe', 'hard to get', 'fool', 'victim', 'hero'
+    ];
+    if (nonMusic.some(w => new RegExp(`(^|\\b)${w}(\\b|$)`, 'i').test(q))) return null;
+    if (/\bplay\s+with\b/i.test(q)) return null;
 
     // Direct pause / resume commands
     if (/^(?:stop|pause)\s+(?:music|song|the music|the song)/i.test(q)) {
@@ -997,9 +1103,7 @@
       return { action: 'resume' };
     }
 
-    const isSpotifyExplicit = /\b(?:on|from|in)\s+spotify\b/i.test(q) || q.startsWith('spotify ');
-
-    // 1. Suggest song / music patterns
+    // 1. Suggest song / music patterns (Always YouTube)
     if (/(?:can you\s+)?(?:suggest|recommend)(?:\s+me)?\s+(?:a|any|some)?\s*(?:good\s+)?(?:song|music|track)/i.test(q) ||
       /what\s+song\s+should\s+i\s+listen\s+to/i.test(q) ||
       /give\s+me\s+a\s+(?:good\s+)?song/i.test(q) ||
@@ -1007,9 +1111,6 @@
       const keys = Object.keys(CURATED_SONGS_CLIENT);
       const pickedKey = keys[Math.floor(Math.random() * keys.length)];
       const item = CURATED_SONGS_CLIENT[pickedKey];
-      if (isSpotifyExplicit) {
-        return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(item.title + ' ' + item.artist)}`, song: item.title, videoId: null };
-      }
       return { isSpotify: false, url: `https://www.youtube.com/watch?v=${item.vid}&autoplay=1`, song: `${item.title} by ${item.artist}`, videoId: item.vid };
     }
 
@@ -1020,44 +1121,43 @@
         .replace(/\b(?:please|for me)\b/gi, '')
         .trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (clean && !/^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$/i.test(clean)) {
-        return _resolveClientSong(clean, isSpotifyExplicit);
+        return _resolveClientSong(clean);
       }
     }
 
-    // 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
-    const playMatch = q.match(/\b(?:play|listen to|put on)\s+(.+)/i);
+    // 3. Direct & natural play commands: "play <song>", "can you play a song", "i want to listen to music", etc.
+    const playMatch = q.match(/^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+|i\s+(?:want|would\s+like)\s+to\s+)?(?:play|listen\s+to|put\s+on|hear|stream|sing)(?:\s+(?:me|us))?(?:\s+(?:a|any|some))?(?:\s+(?:song|songs|music|track|tracks|tunes?))?(?:\s+(?:called|named|by|for\s+me|please))?(?:\s+(.+))?$/i);
     if (playMatch) {
-      let clean = playMatch[1].replace(/\b(?:on|from|in)\s+(?:spotify|youtube)\b/gi, '')
+      let raw = (playMatch[1] || '').trim();
+      let clean = raw.replace(/\b(?:on|from|in)\s+(?:spotify|youtube)\b/gi, '')
         .replace(/\b(?:please|for me)\b/gi, '')
         .trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
-      if (!clean || /^(?:music|some music|a song|songs|spotify|something)$/i.test(clean)) {
+      const genericRequests = [
+        '', 'music', 'some music', 'a song', 'songs', 'something',
+        'any song', 'a track', 'some tracks', 'tunes', 'good music', 'good songs'
+      ];
+      if (!clean || genericRequests.includes(clean)) {
         const keys = Object.keys(CURATED_SONGS_CLIENT);
         const pickedKey = keys[Math.floor(Math.random() * keys.length)];
         const item = CURATED_SONGS_CLIENT[pickedKey];
-        if (isSpotifyExplicit) {
-          return { isSpotify: true, url: 'https://open.spotify.com', song: 'Music', videoId: null };
-        }
         return { isSpotify: false, url: `https://www.youtube.com/watch?v=${item.vid}&autoplay=1`, song: `${item.title} by ${item.artist}`, videoId: item.vid };
       }
-      return _resolveClientSong(clean, isSpotifyExplicit);
+      return _resolveClientSong(clean);
     }
 
-    // 4. Explicit spotify command: "spotify <song>"
+    // 4. Explicit spotify command: "spotify <song>" -> Always play song from YouTube as required
     const spotifyMatch = q.match(/\bspotify\s+(.+)/i);
     if (spotifyMatch) {
       let clean = spotifyMatch[1].replace(/\b(?:please|for me)\b/gi, '').trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
       if (clean) {
-        return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(clean)}`, song: clean, videoId: null };
+        return _resolveClientSong(clean);
       }
     }
 
     return null;
   }
 
-  function _resolveClientSong(clean, isSpotifyExplicit) {
-    if (isSpotifyExplicit) {
-      return { isSpotify: true, url: `https://open.spotify.com/search/${encodeURIComponent(clean)}`, song: clean, videoId: null };
-    }
+  function _resolveClientSong(clean) {
     const cleanLower = clean.toLowerCase();
     for (const [key, item] of Object.entries(CURATED_SONGS_CLIENT)) {
       if (cleanLower.includes(key) || key.includes(cleanLower)) {
@@ -1083,32 +1183,39 @@
 
     if (!text && attachments.length === 0) return;
 
-    // ── URL & Alexa Music opener: must fire window.open() HERE, in the direct user-gesture
-    //    context, before any async operations — otherwise browsers block it.
+    // ── Immediate Alexa/Siri/Jarvis voice action handling
     if (text && attachments.length === 0) {
       _lastSynchronouslyOpenedUrl = null;
       const musicIntent = getMusicPlaybackIntent(text);
       if (musicIntent) {
         if (musicIntent.action === 'pause') {
           pauseAlexaMusic();
+          speakAlexaConfirmation('Music paused.');
         } else if (musicIntent.action === 'resume') {
           resumeAlexaMusic();
-        } else if (musicIntent.isSpotify) {
-          _lastSynchronouslyOpenedUrl = musicIntent.url;
-          window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+          speakAlexaConfirmation('Resuming music.');
         } else {
-          // Alexa-style immediate playback
+          // Always play via Alexa YouTube player dock
           if (musicIntent.videoId) {
             playAlexaMusic({ song: musicIntent.song, videoId: musicIntent.videoId, url: musicIntent.url });
+          } else {
+            _lastSynchronouslyOpenedUrl = musicIntent.url;
+            window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
           }
-          _lastSynchronouslyOpenedUrl = musicIntent.url;
-          window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+          speakAlexaConfirmation(`Playing ${musicIntent.song} on YouTube.`);
         }
       } else {
-        const siteUrl = getSiteOpenUrl(text);
-        if (siteUrl) {
+        const siteMatch = getSiteOpenUrl(text);
+        if (siteMatch) {
+          const siteUrl = siteMatch.url || siteMatch;
+          const siteName = siteMatch.name || 'link';
           _lastSynchronouslyOpenedUrl = siteUrl;
-          window.open(siteUrl, '_blank', 'noopener,noreferrer');
+          try {
+            window.open(siteUrl, '_blank', 'noopener,noreferrer');
+          } catch (e) {
+            console.warn('Window open restricted:', e);
+          }
+          speakAlexaConfirmation(`Opening ${siteName} for you.`);
         }
       }
     }
@@ -1300,7 +1407,15 @@
           if (finalAction === 'play-music' && finalData) playAlexaMusic(finalData);
           if (finalAction === 'pause-music') pauseAlexaMusic();
           if (finalAction === 'resume-music') resumeAlexaMusic();
-          if (finalAction === 'open-url' && finalData && finalData !== _lastSynchronouslyOpenedUrl) window.open(finalData, '_blank');
+          if (finalAction === 'open-url' && finalData) {
+            if (finalData !== _lastSynchronouslyOpenedUrl) {
+              try { window.open(finalData, '_blank'); } catch (_) {}
+            }
+            const openPill = document.createElement('div');
+            openPill.style.marginTop = '10px';
+            openPill.innerHTML = `<a href="${finalData}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:20px;color:#a5b4fc;text-decoration:none;font-size:0.85rem;font-weight:500;"><i class="bi bi-box-arrow-up-right"></i> Open Link</a>`;
+            contentDiv.appendChild(openPill);
+          }
           _lastSynchronouslyOpenedUrl = null;
           if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
           if (finalAction === 'learned' || Array.isArray(finalData)) loadMemory();
@@ -1339,7 +1454,11 @@
       if (data.action === 'play-music' && data.action_data) playAlexaMusic(data.action_data);
       if (data.action === 'pause-music') pauseAlexaMusic();
       if (data.action === 'resume-music') resumeAlexaMusic();
-      if (data.action === 'open-url' && data.action_data && data.action_data !== _lastSynchronouslyOpenedUrl) window.open(data.action_data, '_blank');
+      if (data.action === 'open-url' && data.action_data) {
+        if (data.action_data !== _lastSynchronouslyOpenedUrl) {
+          try { window.open(data.action_data, '_blank'); } catch (_) {}
+        }
+      }
       _lastSynchronouslyOpenedUrl = null;
       if (data.action === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
       if (data.action === 'learned' || Array.isArray(data.action_data)) loadMemory();

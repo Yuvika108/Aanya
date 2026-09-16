@@ -16,13 +16,32 @@ import base64
 import datetime
 import urllib.parse
 import urllib.request
+import time
 import functools
 import random
 from google import genai
 from google.genai import types
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-FALLBACK_MODEL = "gemini-3.5-flash-lite"
+# ── Gemini Models Cascade ───────────────────────────────────────────────────
+# Primary model with automatic fallback cascade to survive 503 UNAVAILABLE,
+# 429 RESOURCE_EXHAUSTED, 404 NOT_FOUND, and temporary high-demand capacity spikes.
+DEFAULT_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+MODEL_CASCADE = [
+    DEFAULT_PRIMARY_MODEL,
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview",
+]
+_seen_models = set()
+MODEL_FALLBACK_CASCADE = []
+for _m in MODEL_CASCADE:
+    if _m and _m not in _seen_models:
+        _seen_models.add(_m)
+        MODEL_FALLBACK_CASCADE.append(_m)
+
+GEMINI_MODEL = MODEL_FALLBACK_CASCADE[0]
+FALLBACK_MODEL = MODEL_FALLBACK_CASCADE[1] if len(MODEL_FALLBACK_CASCADE) > 1 else MODEL_FALLBACK_CASCADE[0]
 
 SITES = {
     "youtube":   "https://www.youtube.com/user/YUVI09",
@@ -37,18 +56,46 @@ SITES = {
 SITE_RULES = [
     {
         "name": "GitHub",
-        "aliases": ["github", "git hub", "git-hub", "gethub"],
-        "url": "https://github.com/Yuv1ka/",
+        "aliases": ["github", "git hub", "git-hub", "gethub", "my github"],
+        "url": "https://github.com/Yuvika108",
+    },
+    {
+        "name": "Gmail",
+        "aliases": [
+            "gmail", "google mail", "inbox", "email", "emails",
+            "my email", "my emails", "mail", "mails", "my mail", "my mails"
+        ],
+        "url": "https://mail.google.com/mail/u/0/#inbox",
+    },
+    {
+        "name": "Codolio",
+        "aliases": ["codolio", "codolio profile", "my codolio", "codolio tracker", "codolio coding"],
+        "url": "https://codolio.com",
+    },
+    {
+        "name": "LinkedIn",
+        "aliases": ["linkedin", "linked in", "my linkedin", "my linked in", "linkedin profile"],
+        "url": "https://www.linkedin.com",
     },
     {
         "name": "WhatsApp",
-        "aliases": ["whatsapp", "whats app", "what's app", "what app", "whatsapp web", "whats app web"],
+        "aliases": ["whatsapp", "whats app", "what's app", "what app", "whatsapp web", "whats app web", "wa"],
         "url": "https://web.whatsapp.com/",
     },
     {
         "name": "YouTube",
-        "aliases": ["youtube", "you tube"],
-        "url": "https://www.youtube.com/user/YUVI09",
+        "aliases": ["youtube", "you tube", "yt"],
+        "url": "https://www.youtube.com",
+    },
+    {
+        "name": "Spotify",
+        "aliases": ["spotify", "spotfy"],
+        "url": "https://open.spotify.com",
+    },
+    {
+        "name": "LeetCode",
+        "aliases": ["leetcode", "leet code", "lc"],
+        "url": "https://leetcode.com/u/Yuv1ka/",
     },
     {
         "name": "Google",
@@ -56,34 +103,86 @@ SITE_RULES = [
         "url": "https://www.google.com",
     },
     {
-        "name": "Spotify",
-        "aliases": ["spotify"],
-        "url": "https://open.spotify.com/user/31y44saeslws5yvkws4zvkh7njuu",
-    },
-    {
-        "name": "LeetCode",
-        "aliases": ["leetcode", "leet code"],
-        "url": "https://leetcode.com/u/Yuv1ka/",
-    },
-    {
         "name": "Wikipedia",
         "aliases": ["wikipedia", "wiki"],
         "url": "https://www.wikipedia.org",
     },
-    {
-        "name": "Gmail",
-        "aliases": ["gmail", "mail", "inbox", "google mail"],
-        "url": "https://mail.google.com/mail/u/0/#inbox",
-    },
 ]
 
-def _match_site_intent(query: str):
+def _match_site_intent(query: str, custom_links: list[dict] | None = None):
     q = query.lower().strip()
-    if any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "why is ", "tell me about ")):
+
+    # 1. Search intents (Google, YouTube, Wikipedia)
+    google_search = re.search(r"^(?:search(?:\s+for)?\s+(.+)\s+on\s+google|search\s+google\s+for\s+(.+)|google\s+(.+))$", q)
+    if google_search:
+        target = (google_search.group(1) or google_search.group(2) or google_search.group(3) or "").strip()
+        if target and not target.startswith("is ") and not target.startswith("are ") and not target.startswith("what "):
+            return {
+                "name": "Google",
+                "url": f"https://www.google.com/search?q={urllib.parse.quote(target)}",
+                "reply": f"Searching Google for '{target}'!",
+            }
+
+    yt_search = re.search(r"^(?:search(?:\s+for)?\s+(.+)\s+on\s+youtube|search\s+youtube\s+for\s+(.+))$", q)
+    if yt_search:
+        target = (yt_search.group(1) or yt_search.group(2) or "").strip()
+        if target:
+            return {
+                "name": "YouTube",
+                "url": f"https://www.youtube.com/results?search_query={urllib.parse.quote(target)}",
+                "reply": f"Searching YouTube for '{target}'!",
+            }
+
+    wiki_search = re.search(r"^(?:search(?:\s+for)?\s+(.+)\s+on\s+wikipedia|search\s+wikipedia\s+for\s+(.+)|wikipedia\s+(.+))$", q)
+    if wiki_search:
+        target = (wiki_search.group(1) or wiki_search.group(2) or wiki_search.group(3) or "").strip()
+        if target:
+            return {
+                "name": "Wikipedia",
+                "url": f"https://en.wikipedia.org/w/index.php?search={urllib.parse.quote(target)}",
+                "reply": f"Searching Wikipedia for '{target}'!",
+            }
+
+    # 2. Exclude drafting / sending emails or asking questions about sites
+    if re.search(r"\b(?:draft|write|compose|send|create)\s+(?:an?\s+)?(?:email|mail|message)\b", q):
         return None
+    if any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "how do ", "why is ", "tell me about ", "explain ", "can you explain ")):
+        return None
+
+    # 3. Explicit open / visit command (with polite prefixes & synonyms)
+    open_match = re.search(
+        r"^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?"
+        r"(?:open|launch|go\s+to|visit|take\s+me\s+to|navigate\s+to|check|show(?:\s+me)?|view|read|access|look\s+at)\s+(.+)$",
+        q,
+    )
+    target_site = open_match.group(1).strip() if open_match else q
+
+    # Check custom user links first if available
+    if custom_links:
+        for cl in custom_links:
+            name = (cl.get("name") or "").strip().lower()
+            url = (cl.get("url") or "").strip()
+            if not name or not url:
+                continue
+            if target_site == name or re.search(rf"\b{re.escape(name)}\b", target_site):
+                if not open_match and len(target_site.split()) > 2:
+                    continue
+                return {
+                    "name": cl.get("name", "Custom Link"),
+                    "aliases": [name],
+                    "url": url,
+                    "reply": f"Opening {cl.get('name')} for you!",
+                }
+
     for rule in SITE_RULES:
-        if any(alias in q for alias in rule["aliases"]):
-            return rule
+        for alias in rule["aliases"]:
+            # Strict word boundary match
+            if target_site == alias or re.search(rf"\b{re.escape(alias)}\b", target_site):
+                # If no explicit open keyword was used, only allow very short commands (e.g. "youtube", "github", "emails")
+                if not open_match and len(target_site.split()) > 2:
+                    continue
+                return rule
+
     return None
 
 CURATED_SONGS = {
@@ -169,55 +268,61 @@ def _task_file(session_id: str) -> str:
 def _memory_file(session_id: str) -> str:
     return os.path.join(DATA_DIR, f"memory_{_safe_id(session_id)}.json")
 
+def _links_file(session_id: str) -> str:
+    return os.path.join(DATA_DIR, f"links_{_safe_id(session_id)}.json")
+
 # Backward compat alias
 _take_file = _task_file
 
 
 # ── Learning keyword patterns ─────────────────────────────────────────────────
 
+NAME_EXCLUSIONS = {
+    "a", "an", "the", "not", "just", "ready", "tired", "back", "here", "fine", "good",
+    "sorry", "sure", "learning", "interested", "okay", "ok", "done", "bored", "busy",
+    "excited", "sick", "listening", "free", "waiting", "looking", "trying", "going",
+    "wondering", "asking", "thinking", "glad", "sad", "alive", "human", "someone",
+    "user", "person", "man", "woman", "boy", "girl", "happy", "hungry", "sleepy",
+    "confused", "lost", "working", "playing", "studying", "coding", "chilling",
+    "new", "old", "late", "early", "curious", "exhausted", "stressed", "feeling",
+    "well", "better", "great", "awesome", "cool", "super", "home", "away", "talking",
+    "helping", "testing", "running", "alright", "nothing", "everything"
+}
+
 _NAME_PATTERNS = [
-    r"my name is ([A-Za-z]+)",
-    r"call me ([A-Za-z]+)",
-    r"i(?:'m| am) ([A-Za-z]+)",
-    r"i go by ([A-Za-z]+)",
+    r"^my\s+name\s+is\s+([A-Za-z]+)",
+    r"^call\s+me\s+([A-Za-z]+)",
+    r"^i\s+go\s+by\s+([A-Za-z]+)",
+    r"^i\s*am\s+([A-Za-z]+)$",
+    r"^i'm\s+([A-Za-z]+)$",
 ]
 
 _PREFERENCE_PATTERNS = [
-    r"i (?:really )?(?:like|love|enjoy|prefer) (.+)",
-    r"my favourite (.+) is (.+)",
-    r"i'm (?:really )?into (.+)",
-    r"i'm a big fan of (.+)",
+    r"^(?:i\s+(?:really\s+)?(?:like|love|enjoy|prefer))\s+(.+)$",
+    r"^(?:my\s+favourite\s+(?:[a-z0-9_\-\s]+)\s+is)\s+(.+)$",
+    r"^(?:i(?:'m|\s+am)\s+(?:really\s+)?(?:into|a\s+big\s+fan\s+of))\s+(.+)$",
 ]
 
 _AVERSION_PATTERNS = [
-    r"i (?:don't|do not|hate|dislike|can't stand) (.+)",
-    r"i(?:'m| am) not (?:a fan of|into) (.+)",
-    r"stop (.+)",
-    r"never (.+)",
-    r"don't (.+) me",
+    r"^(?:i\s+(?:really\s+)?(?:hate|dislike|can't\s+stand|detest))\s+(.+)$",
+    r"^(?:i(?:'m|\s+am)\s+not\s+(?:a\s+fan\s+of|into))\s+(.+)$",
+    r"^(?:please\s+)?never\s+(?:call\s+me|show\s+me|give\s+me|reply\s+with)\s+(.+)$",
+    r"^(?:please\s+)?don't\s+(?:ever\s+)?(?:call\s+me|give\s+me|say)\s+(.+)$",
 ]
 
 _CORRECTION_PATTERNS = [
-    r"(?:that's|you(?:'re| are)) (?:wrong|incorrect|mistaken)",
-    r"actually[,.]? (.+)",
-    r"no[,.]? (.+) is (?:the )?(?:correct|right) answer",
-    r"the correct answer is (.+)",
-    r"you should (?:know|remember) that (.+)",
+    r"^(?:no,?\s+)?that(?:'s|\s+is)\s+(?:not\s+right|wrong|incorrect|false)\b",
+    r"^(?:no,?\s+)?the\s+correct\s+answer\s+is\b",
+    r"^you(?:'re|\s+are)\s+(?:mistaken|wrong)\b",
+    r"^that\s+is\s+not\s+what\s+i\s+asked\b",
 ]
 
 _RULE_PATTERNS = [
-    r"always (.+)",
-    r"please always (.+)",
-    r"from now on[,.]? (.+)",
-    r"(?:i want you to|you should) always (.+)",
+    r"^(?:you\s+(?:must|should)\s+always|always\s+make\s+sure\s+to|please\s+always|from\s+now\s+on,?\s+always|i\s+want\s+you\s+to\s+always)\s+(.+)$",
 ]
 
 _TEACH_PATTERNS = [
-    r"learn this[:\.]? (.+)",
-    r"teach you[:\.]? (.+)",
-    r"remember that (.+)",
-    r"note that (.+)",
-    r"keep in mind[:\.]? (.+)",
+    r"^(?:learn\s+this[:\.]?|teach\s+you[:\.]?|remember\s+that|note\s+that|keep\s+in\s+mind[:\.]?)\s+(.+)$",
 ]
 
 _INTEREST_KEYWORDS = {
@@ -253,6 +358,8 @@ class AanyaEngine:
     def __init__(self, session_id: str, api_key: str):
         self.session_id = session_id or "default"
         self.client = genai.Client(api_key=api_key)
+        self.active_model = GEMINI_MODEL
+        self.chat_session = None
         self.memory = self._load_memory()
         self._rebuild_session()
 
@@ -288,31 +395,36 @@ class AanyaEngine:
         m = self.memory
         profile = m.get("user_profile", {})
         interactions = m.get("interaction_count", 0)
+        now = datetime.datetime.now()
+        current_time_str = now.strftime("%A, %d %B %Y, %I:%M %p")
 
         parts = [
-            "You are Aanya, a warm, witty, and highly intelligent AI assistant "
-            "with a natural British accent and personality. "
-            "Your responses are spoken aloud so keep them conversational, "
-            "natural, and appropriately brief.",
+            f"REAL-WORLD CLOCK & CALENDAR: The current date and time is {current_time_str}. "
+            "Use this temporal anchor to answer questions about today, current time, day of week, or recent events accurately.",
+            "You are Aanya, an exceptionally capable, warm, and articulate AI assistant "
+            "with a natural British accent, charm, and wit. "
+            "Deliver prompt, insightful, high-precision answers. "
+            "Your responses are spoken aloud by default, so keep casual dialogue conversational, "
+            "natural, and appropriately concise, while providing deep, structured answers for complex topics.",
         ]
 
         # Address user by name if known
         if profile.get("name"):
             parts.append(
                 f"The user's name is {profile['name']}. "
-                "Address them by name occasionally — but not every single message."
+                "Address them by name occasionally and naturally."
             )
 
         # Personality maturity based on interaction count
         if interactions > 50:
             parts.append(
                 "You have had many conversations together. "
-                "Be warm and familiar — like a long-time friend."
+                "Be warm and familiar — like a long-time trusted companion."
             )
         elif interactions > 10:
             parts.append(
                 "You are getting to know this user. "
-                "Show genuine interest in their life and preferences."
+                "Show genuine warmth and remember their preferences."
             )
 
         # Interests
@@ -374,23 +486,25 @@ class AanyaEngine:
 
         return " ".join(parts)
 
-    def _rebuild_session(self):
-        """Rebuild Gemini chat session with the latest learned system prompt."""
+    def _rebuild_session(self, preferred_model: str | None = None, history: list | None = None):
+        """Rebuild Gemini chat session with specified or fallback model and current system prompt."""
         self.system_instruction = self._build_system_prompt()
-        try:
-            self.chat_session = self.client.chats.create(
-                model=GEMINI_MODEL,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_instruction
-                ),
-            )
-        except Exception:
-            self.chat_session = self.client.chats.create(
-                model=FALLBACK_MODEL,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_instruction
-                ),
-            )
+        target = preferred_model or getattr(self, "active_model", None) or GEMINI_MODEL
+        candidates = [target] + [m for m in MODEL_FALLBACK_CASCADE if m != target]
+        for m in candidates:
+            try:
+                self.chat_session = self.client.chats.create(
+                    model=m,
+                    history=history[-10:] if history else None,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_instruction
+                    ),
+                )
+                self.active_model = m
+                return
+            except Exception as e:
+                print(f"[Engine] Could not initialize chat session with {m}: {e}")
+                continue
 
     # ── Passive learning (called on every user message) ───────────────────────
 
@@ -407,13 +521,14 @@ class AanyaEngine:
         for pattern in _NAME_PATTERNS:
             m = re.search(pattern, q)
             if m:
-                candidate = m.group(1).strip().capitalize()
-                # Ignore common false positives
-                if candidate.lower() not in ("a", "an", "the", "not", "just"):
+                candidate = m.group(1).strip()
+                cand_lower = candidate.lower()
+                if len(candidate) >= 2 and cand_lower not in NAME_EXCLUSIONS:
+                    candidate_clean = candidate.capitalize()
                     old_name = self.memory["user_profile"].get("name")
-                    if old_name != candidate:
-                        self.memory["user_profile"]["name"] = candidate
-                        learned.append(f"your name is {candidate}")
+                    if old_name != candidate_clean:
+                        self.memory["user_profile"]["name"] = candidate_clean
+                        learned.append(f"your name is {candidate_clean}")
                         changed = True
                     break
 
@@ -421,8 +536,9 @@ class AanyaEngine:
         for pattern in _PREFERENCE_PATTERNS:
             m = re.search(pattern, q)
             if m:
-                pref = m.group(1).strip()
-                if len(pref) > 2 and pref not in self.memory["preferences"]:
+                pref = m.group(1).strip().strip(".,!?:")
+                generic_words = {"it", "this", "that", "you", "to think", "not to", "to know", "something", "anything"}
+                if len(pref) > 2 and pref.lower() not in generic_words and pref not in self.memory["preferences"]:
                     self.memory["preferences"].append(pref)
                     learned.append(f"you like {pref}")
                     changed = True
@@ -432,10 +548,10 @@ class AanyaEngine:
         for pattern in _AVERSION_PATTERNS:
             m = re.search(pattern, q)
             if m:
-                aversion = m.group(1).strip()
+                aversion = m.group(1).strip().strip(".,!?:")
                 if len(aversion) > 2 and aversion not in self.memory["aversions"]:
                     self.memory["aversions"].append(aversion)
-                    learned.append(f"you dislike / I should {aversion}")
+                    learned.append(f"you dislike {aversion}")
                     changed = True
                 break
 
@@ -443,7 +559,7 @@ class AanyaEngine:
         for pattern in _RULE_PATTERNS:
             m = re.search(pattern, q)
             if m:
-                rule = m.group(1).strip()
+                rule = m.group(1).strip().strip(".,!?:")
                 if len(rule) > 3 and rule not in self.memory["behavior_rules"]:
                     self.memory["behavior_rules"].append(rule)
                     learned.append(f"rule added: {rule}")
@@ -454,7 +570,7 @@ class AanyaEngine:
         for pattern in _TEACH_PATTERNS:
             m = re.search(pattern, q)
             if m:
-                fact = m.group(1).strip()
+                fact = m.group(1).strip().strip(".,!?:")
                 if len(fact) > 3:
                     self.memory["learned_facts"].append({
                         "fact": fact,
@@ -475,12 +591,13 @@ class AanyaEngine:
             changed = True
 
         # ── Implicit interest detection ───────────────────────────────────────
-        words_in_msg = set(q.split())
-        detected_interests = words_in_msg & _INTEREST_KEYWORDS
-        for interest in detected_interests:
-            if interest not in self.memory["user_profile"]["interests"]:
-                self.memory["user_profile"]["interests"].append(interest)
-                changed = True
+        if any(trigger in q for trigger in ("i love ", "i like ", "interested in ", "work in ", "passionate about ", "hobby is ")):
+            words_in_msg = set(q.split())
+            detected_interests = words_in_msg & _INTEREST_KEYWORDS
+            for interest in detected_interests:
+                if interest not in self.memory["user_profile"]["interests"]:
+                    self.memory["user_profile"]["interests"].append(interest)
+                    changed = True
 
         # ── Increment interaction count ───────────────────────────────────────
         self.memory["interaction_count"] = self.memory.get("interaction_count", 0) + 1
@@ -601,50 +718,91 @@ class AanyaEngine:
         return parts
 
     def chat(self, query: str, attachments: list | None = None) -> str:
-        try:
-            parts = self._process_attachments(attachments)
-            prompt = parts + [query] if parts else query
-            try:
-                response = self.chat_session.send_message(prompt)
-            except Exception:
-                self._rebuild_session()
-                response = self.chat_session.send_message(prompt)
-            reply = response.text or ""
+        parts = self._process_attachments(attachments)
+        prompt = parts + [query] if parts else query
 
+        history = []
+        if self.chat_session:
             try:
-                history = self.chat_session.get_history()
-                if len(history) > 20:
-                    recent = history[-20:]
-                    curr_model = getattr(self.chat_session, "_model", GEMINI_MODEL) or GEMINI_MODEL
-                    self.chat_session = self.client.chats.create(
-                        model=curr_model,
-                        history=recent,
-                        config=types.GenerateContentConfig(
-                            system_instruction=self.system_instruction
-                        ),
-                    )
+                history = self.chat_session.get_history() or []
             except Exception:
-                pass
-            return reply
-        except Exception as e:
-            return f"I'm facing some issues right now: {e}"
+                history = []
+
+        curr_active = getattr(self, "active_model", None) or GEMINI_MODEL
+        models_to_try = [curr_active] + [m for m in MODEL_FALLBACK_CASCADE if m != curr_active]
+
+        for model_name in models_to_try:
+            try:
+                self._rebuild_session(preferred_model=model_name, history=history)
+                response = self.chat_session.send_message(prompt)
+                reply = response.text or ""
+                self.active_model = model_name
+
+                # Keep history bounded
+                try:
+                    curr_history = self.chat_session.get_history()
+                    if curr_history and len(curr_history) > 20:
+                        recent = curr_history[-20:]
+                        self.chat_session = self.client.chats.create(
+                            model=self.active_model,
+                            history=recent,
+                            config=types.GenerateContentConfig(
+                                system_instruction=self.system_instruction
+                            ),
+                        )
+                except Exception:
+                    pass
+
+                return reply
+            except Exception as e:
+                print(f"[Engine] Model {model_name} failed in chat(): {e}")
+                self.chat_session = None
+                time.sleep(0.3)
+                continue
+
+        return "I am currently experiencing unusually high demand across my network. Please try asking again in just a moment."
 
     def chat_stream(self, query: str, attachments: list | None = None):
-        """Yield tokens in real-time as they stream from Gemini."""
-        try:
-            parts = self._process_attachments(attachments)
-            prompt = parts + [query] if parts else query
+        """Yield tokens in real-time as they stream from Gemini with automated model fallback."""
+        parts = self._process_attachments(attachments)
+        prompt = parts + [query] if parts else query
+
+        history = []
+        if self.chat_session:
             try:
-                response_stream = self.chat_session.send_message_stream(prompt)
+                history = self.chat_session.get_history() or []
             except Exception:
-                self._rebuild_session()
+                history = []
+
+        curr_active = getattr(self, "active_model", None) or GEMINI_MODEL
+        models_to_try = [curr_active] + [m for m in MODEL_FALLBACK_CASCADE if m != curr_active]
+
+        for model_name in models_to_try:
+            try:
+                self._rebuild_session(preferred_model=model_name, history=history)
                 response_stream = self.chat_session.send_message_stream(prompt)
-            for chunk in response_stream:
-                text = chunk.text or ""
-                if text:
-                    yield text
-        except Exception as e:
-            yield f" [Error: {e}]"
+
+                # Prime the generator to catch any initial 503/429/404 early before yielding
+                first_chunk = next(response_stream, None)
+                if first_chunk is not None:
+                    text = first_chunk.text or ""
+                    if text:
+                        yield text
+
+                for chunk in response_stream:
+                    text = chunk.text or ""
+                    if text:
+                        yield text
+
+                self.active_model = model_name
+                return
+            except Exception as e:
+                print(f"[Engine] Model {model_name} failed in chat_stream(): {e}")
+                self.chat_session = None
+                time.sleep(0.3)
+                continue
+
+        yield "I am currently experiencing unusually high demand across my network. Please try asking again in just a moment."
 
     def reset_chat(self):
         self._rebuild_session()
@@ -677,21 +835,75 @@ class AanyaEngine:
             return removed
         return None
 
-    # ── Music & Song Playback (Alexa-style Immediate Autoplay) ────────────────
+    # ── Custom Links & Shortcuts ──────────────────────────────────────────────
+
+    def get_links(self) -> list[dict]:
+        path = _links_file(self.session_id)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+
+    def add_link(self, name: str, url: str) -> dict:
+        links = self.get_links()
+        clean_name = name.strip()
+        clean_url = url.strip()
+        if not clean_url.startswith(("http://", "https://")):
+            clean_url = f"https://{clean_url}"
+        link_id = f"link_{int(datetime.datetime.now().timestamp() * 1000)}"
+        new_link = {
+            "id": link_id,
+            "name": clean_name,
+            "url": clean_url,
+            "created_at": datetime.datetime.now().isoformat(),
+        }
+        # Avoid duplicate names by updating URL if name exists
+        existing = next((l for l in links if l.get("name", "").lower() == clean_name.lower()), None)
+        if existing:
+            existing["url"] = clean_url
+            new_link = existing
+        else:
+            links.append(new_link)
+        with open(_links_file(self.session_id), "w", encoding="utf-8") as f:
+            json.dump(links, f, indent=2)
+        return new_link
+
+    def delete_link(self, link_id: str) -> bool:
+        links = self.get_links()
+        filtered = [l for l in links if l.get("id") != link_id and l.get("name", "").lower() != link_id.lower()]
+        if len(filtered) != len(links):
+            with open(_links_file(self.session_id), "w", encoding="utf-8") as f:
+                json.dump(filtered, f, indent=2)
+            return True
+        return False
+
+    # ── Music & Song Playback (Always Plays From YouTube with Instant Autoplay) ─
 
     def _parse_song_intent(self, query: str) -> dict | None:
         """Parse Alexa-style song playback and recommendation requests.
-        Starts playing the song directly and immediately upon opening.
+        Always plays the song directly from YouTube upon opening.
         """
         q = query.lower().strip()
 
-        # Exclude non-music actions that use the word 'play'
-        non_music = ("chess", "cricket", "game", "football", "tennis", "basketball", "minecraft", "fortnite")
-        if any(w in q for w in non_music):
+        # Questions about playing or instructions are NOT music playback requests
+        if re.search(r"\b(?:how\s+(?:to|can\s+i|do\s+i)|teach\s+me\s+to|learn\s+to|what\s+is|who\s+is|why\s+do|where\s+can\s+i)\b", q):
             return None
 
-        # Check if user specifically requested Spotify
-        is_spotify_explicit = bool(re.search(r"\b(?:on|from|in)\s+spotify\b", q) or q.startswith("spotify "))
+        # Exclude non-music verbs, games, activities, figures of speech
+        non_music = (
+            "chess", "cricket", "game", "games", "football", "tennis", "basketball",
+            "minecraft", "fortnite", "poker", "cards", "monopoly", "blackjack",
+            "puzzle", "crossword", "role", "devil's advocate", "along", "dead",
+            "dumb", "fair", "safe", "hard to get", "fool", "victim", "hero"
+        )
+        if any(re.search(rf"\b{re.escape(w)}\b", q) for w in non_music):
+            return None
+
+        if re.search(r"\bplay\s+with\b", q):
+            return None
 
         # 1. Suggest a song requests (e.g. "suggest a song", "suggest any song", "recommend music")
         suggest_patterns = [
@@ -702,59 +914,56 @@ class AanyaEngine:
         ]
         if any(re.search(p, q) for p in suggest_patterns):
             key, (song, artist, vid) = random.choice(list(CURATED_SONGS.items()))
-            if is_spotify_explicit:
-                target = f"{song} {artist}"
-                url = f"https://open.spotify.com/search/{urllib.parse.quote(target)}"
-                reply = f"I suggest '{song}' by {artist}! Opening it on Spotify."
-                return {"song": target, "reply": reply, "url": url, "video_id": None}
-            else:
-                url = f"https://www.youtube.com/watch?v={vid}&autoplay=1"
-                reply = f"I suggest '{song}' by {artist}! Playing it for you now."
-                return {"song": f"{song} {artist}", "reply": reply, "url": url, "video_id": vid}
+            url = f"https://www.youtube.com/watch?v={vid}&autoplay=1"
+            reply = f"I suggest '{song}' by {artist}! Playing it on YouTube for you now."
+            return {"song": f"{song} {artist}", "reply": reply, "url": url, "video_id": vid}
 
-        # 2. User suggests a specific song: "i suggest <song>", "suggest playing <song>", "how about <song>"
+        # 2. User suggests a specific song: "i suggest <song>", "how about playing <song>", "what about <song>"
         user_suggest = re.search(r"\b(?:i suggest|how about playing|what about playing|how about|what about)\s+(.+)", q)
         if user_suggest:
             raw = user_suggest.group(1).strip()
             clean = re.sub(r"\b(?:on|from|in)\s+(?:spotify|youtube)\b", "", raw)
             clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
             if clean and not re.match(r"^(?:a\s+|any\s+|some\s+)?(?:good\s+)?(?:song|music|track)$", clean):
-                if is_spotify_explicit:
-                    url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-                    reply = f"Great choice! Playing {clean.title()} on Spotify!"
-                    return {"song": clean, "reply": reply, "url": url, "video_id": None}
                 url, vid = resolve_song_playable_url(clean)
-                reply = f"Great choice! Playing {clean.title()} for you now!"
+                reply = f"Great choice! Playing '{clean.title()}' on YouTube for you!"
                 return {"song": clean, "reply": reply, "url": url, "video_id": vid}
 
-        # 3. Direct play commands: "play <song>", "listen to <song>", "put on <song>"
-        play_match = re.search(r"\b(?:play|listen to|put on)\s+(.+)", q)
+        # 3. Direct / natural play commands: "play <song>", "can you play a song", "i want to listen to <song>", etc.
+        play_match = re.search(
+            r"^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+|i\s+(?:want|would\s+like)\s+to\s+)?"
+            r"(?:play|listen\s+to|put\s+on|hear|stream|sing)"
+            r"(?:\s+(?:me|us))?"
+            r"(?:\s+(?:a|any|some))?"
+            r"(?:\s+(?:song|songs|music|track|tracks|tunes?))?"
+            r"(?:\s+(?:called|named|by|for\s+me|please))?"
+            r"(?:\s+(.+))?$",
+            q,
+        )
         if play_match:
-            raw = play_match.group(1).strip()
+            raw = (play_match.group(1) or "").strip()
             clean = re.sub(r"\b(?:on|from|in)\s+(?:spotify|youtube)\b", "", raw)
             clean = re.sub(r"\b(?:please|for me)\b", "", clean).strip(" .?!,\"':")
-            if not clean or clean in ("music", "some music", "a song", "songs", "spotify", "something"):
+            generic_requests = (
+                "", "music", "some music", "a song", "songs", "something",
+                "any song", "a track", "some tracks", "tunes", "good music", "good songs"
+            )
+            if not clean or clean in generic_requests:
                 key, (song, artist, vid) = random.choice(list(CURATED_SONGS.items()))
-                if is_spotify_explicit:
-                    return {"song": "music", "reply": "Playing music on Spotify!", "url": "https://open.spotify.com", "video_id": None}
                 url = f"https://www.youtube.com/watch?v={vid}&autoplay=1"
-                return {"song": f"{song} by {artist}", "reply": f"Playing '{song}' by {artist} for you!", "url": url, "video_id": vid}
-
-            if is_spotify_explicit:
-                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url, "video_id": None}
+                return {"song": f"{song} by {artist}", "reply": f"Playing '{song}' by {artist} on YouTube for you!", "url": url, "video_id": vid}
 
             url, vid = resolve_song_playable_url(clean)
-            return {"song": clean, "reply": f"Playing {clean.title()} for you!", "url": url, "video_id": vid}
+            return {"song": clean, "reply": f"Playing '{clean.title()}' on YouTube for you!", "url": url, "video_id": vid}
 
-        # 4. Explicit spotify query: "spotify <song>"
-        spotify_match = re.search(r"\bspotify\s+(.+)", q)
+        # 4. Explicit spotify query: "spotify <song>" -> Always play song from YouTube as required
+        spotify_match = re.search(r"^spotify\s+(.+)$", q)
         if spotify_match:
             raw = spotify_match.group(1).strip()
             clean = re.sub(r"\b(?:please|for me)\b", "", raw).strip(" .?!,\"':")
             if clean:
-                url = f"https://open.spotify.com/search/{urllib.parse.quote(clean)}"
-                return {"song": clean, "reply": f"Playing {clean.title()} on Spotify!", "url": url, "video_id": None}
+                url, vid = resolve_song_playable_url(clean)
+                return {"song": clean, "reply": f"Playing '{clean.title()}' on YouTube for you!", "url": url, "video_id": vid}
 
         return None
 
@@ -764,12 +973,165 @@ class AanyaEngine:
 
     # ── Command dispatcher ────────────────────────────────────────────────────
 
+    def _handle_instant_command(self, query: str) -> dict | None:
+        """Evaluate deterministic system shortcuts (music, site open/search, precise clock, memory, tasks, exit).
+        Returns result dict if matched, or None to hand off to Gemini general reasoning.
+        """
+        q = query.lower().strip()
+        now = datetime.datetime.now()
+
+        # 1. Alexa-style song playback and recommendations
+        song_info = self._parse_song_intent(query)
+        if song_info:
+            return {
+                "reply": song_info["reply"],
+                "action": "play-music",
+                "action_data": {
+                    "url": song_info["url"],
+                    "video_id": song_info.get("video_id"),
+                    "videoId": song_info.get("video_id"),
+                    "song": song_info.get("song"),
+                },
+                "status": "done",
+            }
+
+        # 2. Alexa music pause / resume
+        if re.search(r"\b(?:stop|pause)\s+(?:music|song|the\s+music|the\s+song)\b", q):
+            return {"reply": "Music paused.", "action": "pause-music", "action_data": None, "status": "done"}
+
+        if re.search(r"\b(?:resume|continue|unpause)\s+(?:music|song|the\s+music|the\s+song)\b", q):
+            return {"reply": "Resuming music.", "action": "resume-music", "action_data": None, "status": "done"}
+
+        # 3. Direct website & search intent (including user custom links)
+        custom_links = self.get_links()
+        matched_site = _match_site_intent(query, custom_links=custom_links)
+        if matched_site:
+            reply_text = matched_site.get("reply") or f"Opening {matched_site['name']} for you!"
+            return {
+                "reply": reply_text,
+                "action": "open-url",
+                "action_data": matched_site["url"],
+                "status": "done",
+            }
+
+        # 3.5. Custom Link Management (Add / Show Links via Voice & Text)
+        add_link_match = re.search(
+            r"^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?(?:add|save|remember|create)\s+link[:\s]+(?:called\s+|named\s+)?([a-zA-Z0-9\s_-]+?)\s+(?:as\s+|to\s+|at\s+|url\s+)?(https?://\S+|\S+\.[a-zA-Z]{2,}\S*)$",
+            q,
+        )
+        if add_link_match:
+            lname = add_link_match.group(1).strip()
+            lurl = add_link_match.group(2).strip()
+            if lname and lurl:
+                new_link = self.add_link(lname, lurl)
+                return {
+                    "reply": f"Added '{new_link['name']}' ({new_link['url']}) to your Quick Links! You can ask me to open {new_link['name']} anytime.",
+                    "action": "link-added",
+                    "action_data": new_link,
+                    "status": "done",
+                }
+
+        if q in ("show links", "show my links", "list links", "list my links", "what are my links", "my links", "quick links", "show quick links"):
+            links = self.get_links()
+            if links:
+                summary_text = ", ".join([f"{l['name']}" for l in links])
+                return {
+                    "reply": f"You have {len(links)} custom link{'s' if len(links) != 1 else ''}: {summary_text}.",
+                    "action": "show-links",
+                    "action_data": links,
+                    "status": "done",
+                }
+            return {
+                "reply": "You don't have any custom links saved yet. You can add one in the Quick Links drawer or say 'Add link [name] [url]'.",
+                "action": "show-links",
+                "action_data": [],
+                "status": "done",
+            }
+
+        # 4. Strict Current Time Query
+        if re.search(r"^(?:what(?:'s|\s+is)\s+the\s+time|what\s+time\s+is\s+it|current\s+time|tell\s+me\s+the\s+time)\??$", q):
+            return {"reply": f"It's {now.strftime('%I:%M %p')}.", "action": None, "action_data": None, "status": "done"}
+
+        # 5. Strict Today's Date Query
+        if re.search(r"^(?:what(?:'s|\s+is)\s+(?:the\s+date|today(?:'s)?\s+date)|what\s+date\s+is\s+it(?:\s+today)?|what\s+is\s+today(?:'s)?\s+date|today(?:'s)?\s+date)\??$", q):
+            return {"reply": f"Today is {now.strftime('%A, %d %B %Y')}.", "action": None, "action_data": None, "status": "done"}
+
+        # 6. Chat reset
+        if q in ("reset chat", "clear chat", "clear history", "reset history", "start over"):
+            self.reset_chat()
+            return {"reply": "Chat history cleared. Fresh start!", "action": None, "action_data": None, "status": "done"}
+
+        # 7. Adaptive Memory Queries
+        if q in ("what have you learned", "what do you know about me", "show your memory", "what is in your memory", "show memory", "view memory"):
+            summary = self.get_memory_summary()
+            parts = []
+            if summary["name"]:
+                parts.append(f"Your name is {summary['name']}.")
+            if summary["interests"]:
+                parts.append(f"You're interested in {', '.join(summary['interests'][:5])}.")
+            if summary["preferences"]:
+                parts.append(f"You like: {'; '.join(summary['preferences'][:3])}.")
+            if summary["behavior_rules"]:
+                parts.append(f"I follow these rules: {'; '.join(summary['behavior_rules'][:2])}.")
+            if summary["learned_facts"]:
+                parts.append(f"I've learned {len(summary['learned_facts'])} facts about you.")
+            parts.append(f"We've had {summary['interaction_count']} interactions together.")
+            reply = " ".join(parts) if parts else "I'm still getting to know you! Tell me about yourself."
+            return {"reply": reply, "action": "show-memory", "action_data": summary, "status": "done"}
+
+        # 8. Memory Clear
+        if q in ("forget everything", "clear my memory", "reset memory", "clear all memory"):
+            self.forget("all")
+            return {"reply": "I've cleared everything I learned about you. We start fresh.", "action": None, "action_data": None, "status": "done"}
+
+        # 9. Tasks: Add Task
+        task_add_match = re.search(r"^(?:remember\s+to|remind\s+me\s+to|add\s+task[:\s]+|new\s+task[:\s]+|add\s+to(?:-do|\s+tasks?)[:\s]+|todo[:\s]+)\s+(.+)$", q)
+        if task_add_match:
+            task_text = task_add_match.group(1).strip()
+            if task_text.startswith("to "):
+                task_text = task_text[3:].strip()
+            if task_text:
+                self.save_task(task_text)
+                return {"reply": f"Noted — I'll remember to {task_text}.", "action": "task-added", "action_data": task_text, "status": "done"}
+
+        # 10. Tasks: Show Tasks
+        if q in ("show my tasks", "my tasks", "show tasks", "list my tasks", "list tasks", "what are my tasks"):
+            tasks = self.load_tasks()
+            if tasks:
+                task_text = "\n".join([f"{i+1}. {t}" for i, t in enumerate(tasks)])
+                return {
+                    "reply": f"You have {len(tasks)} task{'s' if len(tasks) != 1 else ''}.",
+                    "action": "show-tasks",
+                    "action_data": task_text,
+                    "status": "done",
+                }
+            return {"reply": "You have no tasks saved. Shall I add one?", "action": None, "action_data": None, "status": "done"}
+
+        # 11. Tasks: Delete Task
+        task_del_match = re.search(r"^(?:delete|remove)\s+task\s+(\d+)$", q)
+        if task_del_match:
+            try:
+                num = int(task_del_match.group(1))
+                removed = self.delete_task(num)
+                reply = f"Removed task {num}: {removed}." if removed else f"I couldn't find task number {num}."
+            except Exception:
+                reply = "Please specify a valid task number."
+            return {"reply": reply, "action": None, "action_data": None, "status": "done"}
+
+        # 12. Strict Farewell
+        if re.search(r"^(?:goodbye|bye|bye\s+bye|see\s+you(?:\s+later)?|farewell|exit|quit|aanya\s+quit|go\s+to\s+sleep|sleep\s+now)$", q):
+            name = self.memory["user_profile"].get("name", "")
+            farewell = f"Goodbye{', ' + name if name else ''}! It was lovely chatting with you."
+            return {"reply": farewell, "action": "quit", "action_data": None, "status": "done"}
+
+        return None
+
     def execute_command(self, query: str, attachments: list | None = None) -> dict:
         q = query.lower().strip()
         if not q and not attachments:
             return {"reply": "", "action": None, "action_data": None, "status": "done"}
 
-        # If user attached files, prioritize multimodal reasoning over simple keywords
+        # If user attached files, prioritize multimodal reasoning over simple shortcuts
         has_media = bool(attachments)
 
         # ── Learn passively from every message ────────────────────────────────
@@ -777,97 +1139,9 @@ class AanyaEngine:
 
         # ── Built-in shortcut commands (only if no media attached) ─────────────
         if not has_media:
-            # 0. Alexa-style song playback and recommendations
-            song_info = self._parse_song_intent(query)
-            if song_info:
-                return {
-                    "reply": song_info["reply"],
-                    "action": "play-music",
-                    "action_data": {
-                        "url": song_info["url"],
-                        "video_id": song_info.get("video_id"),
-                        "song": song_info.get("song"),
-                    },
-                    "status": "done",
-                }
-
-            if any(p in q for p in ("stop music", "pause music", "stop the song", "pause the song", "stop song", "pause song")):
-                return {"reply": "Music paused.", "action": "pause-music", "action_data": None, "status": "done"}
-
-            if any(p in q for p in ("resume music", "continue music", "resume song", "unpause music")):
-                return {"reply": "Resuming music.", "action": "resume-music", "action_data": None, "status": "done"}
-
-            matched_site = _match_site_intent(query)
-            if matched_site:
-                return {
-                    "reply": f"Opening {matched_site['name']} for you!",
-                    "action": "open-url",
-                    "action_data": matched_site["url"],
-                    "status": "done",
-                }
-
-            now = datetime.datetime.now()
-            if "time" in q and "what" in q:
-                return {"reply": f"It's {now.strftime('%I:%M %p')}.", "action": None, "action_data": None, "status": "done"}
-            if "date" in q or "today" in q:
-                return {"reply": f"Today is {now.strftime('%A, %d %B %Y')}.", "action": None, "action_data": None, "status": "done"}
-
-            if "reset chat" in q or "clear history" in q:
-                self.reset_chat()
-                return {"reply": "Chat history cleared. Fresh start!", "action": None, "action_data": None, "status": "done"}
-
-            if "what have you learned" in q or "what do you know about me" in q or "your memory" in q:
-                summary = self.get_memory_summary()
-                parts = []
-                if summary["name"]:
-                    parts.append(f"Your name is {summary['name']}.")
-                if summary["interests"]:
-                    parts.append(f"You're interested in {', '.join(summary['interests'][:5])}.")
-                if summary["preferences"]:
-                    parts.append(f"You like: {'; '.join(summary['preferences'][:3])}.")
-                if summary["behavior_rules"]:
-                    parts.append(f"I follow these rules: {'; '.join(summary['behavior_rules'][:2])}.")
-                if summary["learned_facts"]:
-                    parts.append(f"I've learned {len(summary['learned_facts'])} facts about you.")
-                parts.append(f"We've had {summary['interaction_count']} interactions together.")
-                reply = " ".join(parts) if parts else "I'm still getting to know you! Tell me about yourself."
-                return {"reply": reply, "action": "show-memory", "action_data": summary, "status": "done"}
-
-            if "forget everything" in q or "clear my memory" in q or "reset memory" in q:
-                self.forget("all")
-                return {"reply": "I've cleared everything I learned about you. We start fresh.", "action": None, "action_data": None, "status": "done"}
-
-            if "remember" in q and "task" not in q:
-                task_text = re.sub(r"remember\s+(to\s+)?", "", q).strip()
-                if task_text:
-                    self.save_task(task_text)
-                    return {"reply": f"Noted — I'll remember to {task_text}.", "action": None, "action_data": None, "status": "done"}
-
-            if "show my tasks" in q or "my tasks" in q:
-                tasks = self.load_tasks()
-                if tasks:
-                    task_text = "\n".join([f"{i+1}. {t}" for i, t in enumerate(tasks)])
-                    return {
-                        "reply": f"You have {len(tasks)} task{'s' if len(tasks) != 1 else ''}.",
-                        "action": "show-tasks",
-                        "action_data": task_text,
-                        "status": "done",
-                    }
-                return {"reply": "You have no tasks. Shall I add one?", "action": None, "action_data": None, "status": "done"}
-
-            if "delete task" in q:
-                num_str = q.replace("delete task", "").strip()
-                try:
-                    removed = self.delete_task(int(num_str))
-                    reply = f"Removed: {removed}." if removed else "I couldn't find that task number."
-                except ValueError:
-                    reply = "Please say the task number you'd like to delete."
-                return {"reply": reply, "action": None, "action_data": None, "status": "done"}
-
-            if any(w in q for w in ("goodbye", "bye", "aanya quit", "sleep", "exit")):
-                name = self.memory["user_profile"].get("name", "")
-                farewell = f"Goodbye{', ' + name if name else ''}! It was lovely chatting with you."
-                return {"reply": farewell, "action": "quit", "action_data": None, "status": "done"}
+            instant_res = self._handle_instant_command(query)
+            if instant_res is not None:
+                return instant_res
 
         # ── Gemini multimodal chat (with learned context injected) ─────────────
         query_text = query if query.strip() else "Please analyze the uploaded media in detail."
@@ -887,58 +1161,15 @@ class AanyaEngine:
 
         # ── Built-in shortcuts & instant commands ────────────────────────────
         if not has_media:
-            # 0. Alexa-style song playback and recommendations
-            song_info = self._parse_song_intent(query)
-            if song_info:
+            instant_res = self._handle_instant_command(query)
+            if instant_res is not None:
                 yield {
                     "type": "meta",
-                    "action": "play-music",
-                    "action_data": {
-                        "url": song_info["url"],
-                        "video_id": song_info.get("video_id"),
-                        "song": song_info.get("song"),
-                    },
+                    "action": instant_res.get("action"),
+                    "action_data": instant_res.get("action_data"),
                 }
-                yield {"type": "token", "token": song_info["reply"]}
-                yield {"type": "done", "reply": song_info["reply"]}
-                return
-
-            if any(p in q for p in ("stop music", "pause music", "stop the song", "pause the song", "stop song", "pause song")):
-                msg = "Music paused."
-                yield {"type": "meta", "action": "pause-music", "action_data": None}
-                yield {"type": "token", "token": msg}
-                yield {"type": "done", "reply": msg}
-                return
-
-            if any(p in q for p in ("resume music", "continue music", "resume song", "unpause music")):
-                msg = "Resuming music."
-                yield {"type": "meta", "action": "resume-music", "action_data": None}
-                yield {"type": "token", "token": msg}
-                yield {"type": "done", "reply": msg}
-                return
-
-            # 1. Direct website openers
-            matched_site = _match_site_intent(query)
-            if matched_site:
-                yield {"type": "meta", "action": "open-url", "action_data": matched_site["url"]}
-                msg = f"Opening {matched_site['name']} for you!"
-                yield {"type": "token", "token": msg}
-                yield {"type": "done", "reply": msg}
-                return
-
-            # 2. Instant commands: time, date, memory, tasks, goodbye, reset
-            instant_triggers = (
-                "time", "date", "today", "reset chat", "clear history",
-                "what have you learned", "what do you know about me", "your memory",
-                "forget everything", "clear my memory", "reset memory",
-                "remember", "show my tasks", "my tasks", "delete task",
-                "goodbye", "bye", "aanya quit", "sleep", "exit"
-            )
-            if any(trig in q for trig in instant_triggers):
-                res = self.execute_command(query, attachments)
-                yield {"type": "meta", "action": res.get("action"), "action_data": res.get("action_data")}
-                yield {"type": "token", "token": res["reply"]}
-                yield {"type": "done", "reply": res["reply"]}
+                yield {"type": "token", "token": instant_res["reply"]}
+                yield {"type": "done", "reply": instant_res["reply"], "action": instant_res.get("action"), "action_data": instant_res.get("action_data")}
                 return
 
         # ── Gemini Streaming ──────────────────────────────────────────────────

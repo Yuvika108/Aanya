@@ -76,6 +76,27 @@ def test_site_and_search_intent():
         assert m["name"] == "Gmail"
         assert "mail.google.com" in m["url"]
 
+    # Codolio variations
+    for q in ["open codolio", "open my codolio", "codolio", "can you open codolio", "please open codolio"]:
+        c = _match_site_intent(q)
+        assert c is not None, f"Expected match for: {q}"
+        assert c["name"] == "Codolio"
+        assert "codolio.com" in c["url"]
+
+    # LinkedIn variations
+    for q in ["open linkedin", "open my linkedin", "linkedin", "can you open linkedin", "please open linkedin"]:
+        li = _match_site_intent(q)
+        assert li is not None, f"Expected match for: {q}"
+        assert li["name"] == "LinkedIn"
+        assert "linkedin.com" in li["url"]
+
+    # Spotify site opening
+    for q in ["open spotify", "spotify", "open my spotify"]:
+        sp = _match_site_intent(q)
+        assert sp is not None, f"Expected match for: {q}"
+        assert sp["name"] == "Spotify"
+        assert "spotify.com" in sp["url"]
+
     # Search intents
     g_search = _match_site_intent("search google for quantum computing")
     assert g_search is not None
@@ -120,6 +141,8 @@ def test_music_intent():
         res = engine._parse_song_intent(q)
         assert res is not None, f"Expected music intent for query: {q}"
         assert "url" in res and "video_id" in res
+        # User constraint: ALWAYS play songs from YouTube
+        assert "youtube.com" in res["url"]
 
     # Specific song requests
     specific_queries = [
@@ -134,16 +157,19 @@ def test_music_intent():
         assert res is not None, f"Expected match for: {q}"
         assert res["video_id"] == vid
         assert "autoplay=1" in res["url"]
+        assert "youtube.com" in res["url"]
 
     # Song suggestions
     suggest = engine._parse_song_intent("suggest a song")
     assert suggest is not None
     assert suggest["video_id"] is not None
+    assert "youtube.com" in suggest["url"]
 
-    # Spotify explicit request
-    spotify = engine._parse_song_intent("play bohemian rhapsody on spotify")
-    assert spotify is not None
-    assert "open.spotify.com" in spotify["url"]
+    # Spotify song request — User constraint: ALWAYS play songs from YouTube
+    spotify_song = engine._parse_song_intent("play bohemian rhapsody on spotify")
+    assert spotify_song is not None
+    assert "youtube.com" in spotify_song["url"]
+    assert spotify_song["video_id"] == "fJ9rUzIMcZQ"
 
     # Controls
     stop_res = engine._handle_instant_command("pause music")
@@ -237,13 +263,63 @@ def test_farewell_intent():
         assert res is None, f"Query '{q}' should NOT be treated as a farewell!"
 
 
+def test_custom_links():
+    engine = AanyaEngine(session_id=TEST_SESSION, api_key="fake-key-for-unit-test")
+
+    # Initially empty or clean
+    links = engine.get_links()
+    initial_count = len(links)
+
+    # 1. Add link programmatically
+    new_link = engine.add_link("portfolio", "https://yuvika.dev")
+    assert new_link["name"] == "portfolio"
+    assert new_link["url"] == "https://yuvika.dev"
+    assert len(engine.get_links()) == initial_count + 1
+
+    # 2. Match site intent with custom links
+    match = _match_site_intent("open portfolio", custom_links=engine.get_links())
+    assert match is not None
+    assert match["url"] == "https://yuvika.dev"
+    assert match["name"] == "portfolio"
+
+    # 3. Voice instant command: open custom link
+    open_res = engine._handle_instant_command("open portfolio")
+    assert open_res is not None
+    assert open_res["action"] == "open-url"
+    assert open_res["action_data"] == "https://yuvika.dev"
+
+    # 4. Voice instant command: add link
+    add_voice = engine._handle_instant_command("add link docs https://docs.python.org")
+    assert add_voice is not None
+    assert add_voice["action"] == "link-added"
+    assert "docs" in add_voice["reply"]
+
+    # 5. Voice instant command: show links
+    show_links = engine._handle_instant_command("show links")
+    assert show_links is not None
+    assert show_links["action"] == "show-links"
+    assert len(show_links["action_data"]) >= 2
+
+    # 6. Delete link
+    deleted = engine.delete_link(new_link["id"])
+    assert deleted is True
+    assert not any(l["id"] == new_link["id"] for l in engine.get_links())
+
+
 def test_main_py_engine_consistency():
     main_eng = MainEngine()
 
-    # Song intent
+    # Song intent — ALWAYS YouTube
     res = main_eng._parse_song_intent("play espresso")
     assert res is not None
     assert res["video_id"] == "eVli-tstM5E"
+    assert "youtube.com" in res["url"]
+
+    # Spotify song request routes to YouTube
+    spot_res = main_eng._parse_song_intent("play flowers on spotify")
+    assert spot_res is not None
+    assert spot_res["video_id"] == "G7KNmW9a75Y"
+    assert "youtube.com" in spot_res["url"]
 
     # Non-music intent exclusion
     assert main_eng._parse_song_intent("how to play piano") is None
@@ -253,3 +329,15 @@ def test_main_py_engine_consistency():
     site = main_match_site_intent("search google for python")
     assert site is not None
     assert "google.com/search?q=" in site["url"]
+
+    # Platforms in main.py
+    for q, domain in [
+        ("open codolio", "codolio.com"),
+        ("open linkedin", "linkedin.com"),
+        ("open spotify", "spotify.com"),
+        ("open gmail", "mail.google.com"),
+        ("open github", "github.com"),
+    ]:
+        m = main_match_site_intent(q)
+        assert m is not None, f"Expected main.py match for: {q}"
+        assert domain in m["url"]

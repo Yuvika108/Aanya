@@ -1419,7 +1419,12 @@
           _lastSynchronouslyOpenedUrl = null;
           if (finalAction === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
           if (finalAction === 'learned' || Array.isArray(finalData)) loadMemory();
+          if (finalAction === 'link-added' || finalAction === 'show-links') {
+            DOM.linksDrawer?.classList.add('open');
+            loadLinks();
+          }
           if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();
+          if (payload.message?.toLowerCase().match(/link/)) loadLinks();
 
           if (!settled) { settled = true; resolve(); }
         })
@@ -1462,7 +1467,12 @@
       _lastSynchronouslyOpenedUrl = null;
       if (data.action === 'show-memory') { DOM.memoryDrawer?.classList.add('open'); loadMemory(); }
       if (data.action === 'learned' || Array.isArray(data.action_data)) loadMemory();
+      if (data.action === 'link-added' || data.action === 'show-links') {
+        DOM.linksDrawer?.classList.add('open');
+        loadLinks();
+      }
       if (payload.message?.toLowerCase().match(/task|remember/)) loadTasks();
+      if (payload.message?.toLowerCase().match(/link/)) loadLinks();
     } catch (err) {
       if (err.name !== 'AbortError') console.error('Chat error:', err);
       appendAssistantMessage(
@@ -1533,6 +1543,110 @@
         playDoneChime();
       } catch { toast.textContent = 'Correction recorded.'; }
     });
+  }
+
+  // ── Quick Links Controller ────────────────────────────────────────────────
+  async function loadLinks() {
+    try {
+      const response = await fetch(`/links/${encodeURIComponent(state.sessionId)}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      state.customLinks = data.links || [];
+      localStorage.setItem('aanya_custom_links', JSON.stringify(state.customLinks));
+      renderCustomLinks();
+    } catch (err) {
+      console.warn('Failed to load links from server, using cached links:', err);
+      renderCustomLinks();
+    }
+  }
+
+  async function addCustomLink(name, url) {
+    if (!name || !url) return;
+    let cleanUrl = url.trim();
+    if (!cleanUrl.match(/^https?:\/\//i)) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
+    try {
+      const response = await fetch('/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          url: cleanUrl,
+          session_id: state.sessionId
+        })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        state.customLinks = data.links || [];
+        localStorage.setItem('aanya_custom_links', JSON.stringify(state.customLinks));
+        renderCustomLinks();
+        if (DOM.newLinkNameInput) DOM.newLinkNameInput.value = '';
+        if (DOM.newLinkUrlInput) DOM.newLinkUrlInput.value = '';
+        playDoneChime();
+        speakAlexaConfirmation(`Added shortcut for ${name}`);
+      }
+    } catch (err) {
+      console.error('Failed to add custom link:', err);
+    }
+  }
+
+  async function deleteCustomLink(linkId) {
+    try {
+      const response = await fetch(`/links/${encodeURIComponent(linkId)}?session_id=${encodeURIComponent(state.sessionId)}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        state.customLinks = data.links || [];
+        localStorage.setItem('aanya_custom_links', JSON.stringify(state.customLinks));
+        renderCustomLinks();
+      }
+    } catch (err) {
+      console.error('Failed to delete custom link:', err);
+    }
+  }
+
+  function renderCustomLinks() {
+    const count = (state.customLinks || []).length;
+    if (DOM.linkCountBadge) DOM.linkCountBadge.textContent = count;
+    if (DOM.drawerLinksBadge) DOM.drawerLinksBadge.textContent = `${count} custom shortcut${count === 1 ? '' : 's'}`;
+
+    if (!DOM.customLinksList) return;
+    DOM.customLinksList.innerHTML = '';
+
+    if (count === 0) {
+      DOM.emptyLinksNotice?.classList.add('visible');
+    } else {
+      DOM.emptyLinksNotice?.classList.remove('visible');
+      state.customLinks.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'custom-link-item';
+        li.innerHTML = `
+          <div class="custom-link-info">
+            <span class="custom-link-name"><i class="bi bi-bookmark-fill" aria-hidden="true"></i> ${escapeHTML(item.name || 'Link')}</span>
+            <a href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer" class="custom-link-url" title="${escapeHTML(item.url)}">${escapeHTML(item.url)}</a>
+          </div>
+          <div class="custom-link-actions">
+            <a href="${escapeHTML(item.url)}" target="_blank" rel="noopener noreferrer" class="link-open-btn" aria-label="Open ${escapeHTML(item.name)}" title="Open now">
+              <i class="bi bi-box-arrow-up-right"></i>
+            </a>
+            <button class="link-delete-btn" aria-label="Delete shortcut for ${escapeHTML(item.name)}" data-id="${escapeHTML(item.id || item.name)}" title="Remove shortcut">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        `;
+        DOM.customLinksList.appendChild(li);
+      });
+
+      // Bind delete buttons
+      DOM.customLinksList.querySelectorAll('.link-delete-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          if (id) deleteCustomLink(id);
+        });
+      });
+    }
   }
 
   // ── Task Management Drawer ─────────────────────────────────────────────────
@@ -1869,8 +1983,47 @@
       });
     });
 
+    // Quick Links Drawer Open / Close
+    DOM.linksToggleBtn?.addEventListener('click', () => {
+      DOM.tasksDrawer?.classList.remove('open');
+      DOM.tasksDrawer?.setAttribute('aria-hidden', 'true');
+      DOM.memoryDrawer?.classList.remove('open');
+      DOM.memoryDrawer?.setAttribute('aria-hidden', 'true');
+      DOM.linksDrawer?.classList.toggle('open');
+      const isOpen = DOM.linksDrawer?.classList.contains('open');
+      DOM.linksDrawer?.setAttribute('aria-hidden', !isOpen);
+      if (isOpen) loadLinks();
+    });
+
+    DOM.closeLinksBtn?.addEventListener('click', () => {
+      DOM.linksDrawer?.classList.remove('open');
+      DOM.linksDrawer?.setAttribute('aria-hidden', 'true');
+    });
+
+    // Quick Add Link Form
+    DOM.addLinkForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = DOM.newLinkNameInput?.value;
+      const url = DOM.newLinkUrlInput?.value;
+      addCustomLink(name, url);
+    });
+
+    // Shortcut tiles in Quick Links Drawer
+    document.querySelectorAll('.shortcut-tile').forEach((tile) => {
+      tile.addEventListener('click', () => {
+        const url = tile.getAttribute('data-url');
+        const site = tile.getAttribute('data-site');
+        if (url) {
+          speakAlexaConfirmation(`Opening ${site || 'link'} for you`);
+          window.open(url, '_blank');
+        }
+      });
+    });
+
     // Tasks Drawer Open / Close
     DOM.tasksToggleBtn?.addEventListener('click', () => {
+      DOM.linksDrawer?.classList.remove('open');
+      DOM.linksDrawer?.setAttribute('aria-hidden', 'true');
       DOM.memoryDrawer?.classList.remove('open');
       DOM.memoryDrawer?.setAttribute('aria-hidden', 'true');
       DOM.tasksDrawer.classList.toggle('open');
@@ -1884,6 +2037,8 @@
 
     // Adaptive Memory Drawer Open / Close
     DOM.memoryToggleBtn?.addEventListener('click', () => {
+      DOM.linksDrawer?.classList.remove('open');
+      DOM.linksDrawer?.setAttribute('aria-hidden', 'true');
       DOM.tasksDrawer?.classList.remove('open');
       DOM.tasksDrawer?.setAttribute('aria-hidden', 'true');
       DOM.memoryDrawer.classList.toggle('open');
@@ -1994,6 +2149,7 @@
     setupEventListeners();
     loadTasks();
     loadMemory();
+    loadLinks();
     setState('standby');
   }
 

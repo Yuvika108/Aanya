@@ -25,13 +25,16 @@ from google.genai import types
 # ── Gemini Models Cascade ───────────────────────────────────────────────────
 # Primary model with automatic fallback cascade to survive 503 UNAVAILABLE,
 # 429 RESOURCE_EXHAUSTED, 404 NOT_FOUND, and temporary high-demand capacity spikes.
-DEFAULT_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+# Default to high-speed sub-second models (gemini-3.5-flash-lite, gemini-flash-lite-latest)
+DEFAULT_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
 MODEL_CASCADE = [
     DEFAULT_PRIMARY_MODEL,
-    "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
 ]
 _seen_models = set()
 MODEL_FALLBACK_CASCADE = []
@@ -404,8 +407,9 @@ class AanyaEngine:
             "You are Aanya, an exceptionally capable, warm, and articulate AI assistant "
             "with a natural British accent, charm, and wit. "
             "Deliver prompt, insightful, high-precision answers. "
-            "Your responses are spoken aloud by default, so keep casual dialogue conversational, "
-            "natural, and appropriately concise, while providing deep, structured answers for complex topics.",
+            "VOICE FLUIDITY & EFFORTLESS RESPONSIVENESS: Speak with the immediacy, effortless charm, and brevity of a world-class assistant like Jarvis or Siri. "
+            "In casual or spoken interactions, give immediate, crisp, and direct answers (typically 1 to 2 clear, natural sentences) without repetitive filler, polite disclaimers, or robot preambles like 'Sure, I can help with that'. "
+            "Get straight to the answer so conversations flow seamlessly, while delivering rich, structured explanations when detailed analysis or code is requested.",
         ]
 
         # Address user by name if known
@@ -721,6 +725,30 @@ class AanyaEngine:
         parts = self._process_attachments(attachments)
         prompt = parts + [query] if parts else query
 
+        # ── Fast path: direct send on existing active session without rebuild ──
+        if self.chat_session is not None:
+            try:
+                response = self.chat_session.send_message(prompt)
+                reply = response.text or ""
+                # Keep history bounded
+                try:
+                    curr_history = self.chat_session.get_history()
+                    if curr_history and len(curr_history) > 20:
+                        recent = curr_history[-20:]
+                        self.chat_session = self.client.chats.create(
+                            model=self.active_model,
+                            history=recent,
+                            config=types.GenerateContentConfig(
+                                system_instruction=self.system_instruction
+                            ),
+                        )
+                except Exception:
+                    pass
+                return reply
+            except Exception as e:
+                print(f"[Engine] Active session failed with {getattr(self, 'active_model', 'unknown')}: {e}. Retrying fallback cascade...")
+                self.chat_session = None
+
         history = []
         if self.chat_session:
             try:
@@ -737,27 +765,11 @@ class AanyaEngine:
                 response = self.chat_session.send_message(prompt)
                 reply = response.text or ""
                 self.active_model = model_name
-
-                # Keep history bounded
-                try:
-                    curr_history = self.chat_session.get_history()
-                    if curr_history and len(curr_history) > 20:
-                        recent = curr_history[-20:]
-                        self.chat_session = self.client.chats.create(
-                            model=self.active_model,
-                            history=recent,
-                            config=types.GenerateContentConfig(
-                                system_instruction=self.system_instruction
-                            ),
-                        )
-                except Exception:
-                    pass
-
                 return reply
             except Exception as e:
                 print(f"[Engine] Model {model_name} failed in chat(): {e}")
                 self.chat_session = None
-                time.sleep(0.3)
+                time.sleep(0.2)
                 continue
 
         return "I am currently experiencing unusually high demand across my network. Please try asking again in just a moment."
@@ -766,6 +778,25 @@ class AanyaEngine:
         """Yield tokens in real-time as they stream from Gemini with automated model fallback."""
         parts = self._process_attachments(attachments)
         prompt = parts + [query] if parts else query
+
+        # ── Fast path: direct stream on existing active session without rebuild ─
+        if self.chat_session is not None:
+            try:
+                response_stream = self.chat_session.send_message_stream(prompt)
+                first_chunk = next(response_stream, None)
+                if first_chunk is not None:
+                    text = first_chunk.text or ""
+                    if text:
+                        yield text
+
+                for chunk in response_stream:
+                    text = chunk.text or ""
+                    if text:
+                        yield text
+                return
+            except Exception as e:
+                print(f"[Engine] Active stream failed with {getattr(self, 'active_model', 'unknown')}: {e}. Retrying fallback cascade...")
+                self.chat_session = None
 
         history = []
         if self.chat_session:
@@ -782,7 +813,6 @@ class AanyaEngine:
                 self._rebuild_session(preferred_model=model_name, history=history)
                 response_stream = self.chat_session.send_message_stream(prompt)
 
-                # Prime the generator to catch any initial 503/429/404 early before yielding
                 first_chunk = next(response_stream, None)
                 if first_chunk is not None:
                     text = first_chunk.text or ""
@@ -799,7 +829,7 @@ class AanyaEngine:
             except Exception as e:
                 print(f"[Engine] Model {model_name} failed in chat_stream(): {e}")
                 self.chat_session = None
-                time.sleep(0.3)
+                time.sleep(0.2)
                 continue
 
         yield "I am currently experiencing unusually high demand across my network. Please try asking again in just a moment."

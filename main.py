@@ -264,13 +264,15 @@ APP_COMMANDS = [
     (["open gmail", "open mail"],                   "Gmail",    "https://mail.google.com/mail/u/0/#inbox"),
 ]
 
-DEFAULT_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+DEFAULT_PRIMARY_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
 MODEL_CASCADE = [
     DEFAULT_PRIMARY_MODEL,
-    "gemini-3.5-flash-lite",
     "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
     "gemini-3-flash-preview",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
 ]
 _seen_main = set()
 MODEL_FALLBACK_CASCADE = []
@@ -478,6 +480,29 @@ class AanyaEngine:
         self._emit_state("thinking")
         self._emit_status("💬", "THINKING", "Contacting Gemini...")
 
+        # ── Fast path: direct send on existing active session without rebuild ──
+        if self.chat_session is not None:
+            try:
+                response = self.chat_session.send_message(query)
+                reply = response.text or ""
+                # Keep history bounded
+                try:
+                    curr_history = self.chat_session.get_history()
+                    if curr_history and len(curr_history) > 10:
+                        recent = curr_history[-10:]
+                        self.chat_session = self.client.chats.create(
+                            model=self.active_model,
+                            history=recent,
+                            config=types.GenerateContentConfig(system_instruction=self.system_instruction)
+                        )
+                except Exception:
+                    pass
+                self.say(reply)
+                return reply
+            except Exception as e:
+                print(f"[MainEngine] Active session failed with {getattr(self, 'active_model', 'unknown')}: {e}. Retrying fallback cascade...")
+                self.chat_session = None
+
         history = []
         if self.chat_session:
             try:
@@ -499,24 +524,11 @@ class AanyaEngine:
                 reply = response.text or ""
                 self.active_model = model_name
 
-                # Keep history bounded
-                try:
-                    curr_history = self.chat_session.get_history()
-                    if curr_history and len(curr_history) > 10:
-                        recent = curr_history[-10:]
-                        self.chat_session = self.client.chats.create(
-                            model=self.active_model,
-                            history=recent,
-                            config=types.GenerateContentConfig(system_instruction=self.system_instruction)
-                        )
-                except Exception:
-                    pass
-
                 self.say(reply)
                 return reply
             except Exception as e:
                 print(f"[MainEngine] Model {model_name} failed in chat(): {e}")
-                time.sleep(0.3)
+                time.sleep(0.2)
                 continue
 
         fallback_msg = "I'm currently experiencing high demand across my network. Please try asking again in just a moment."

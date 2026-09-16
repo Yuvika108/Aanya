@@ -249,6 +249,8 @@
 
   // ── Web Speech Recognition (Mic Input) ─────────────────────────────────────
   let recognition = null;
+  let _silenceTimer = null;
+  let _lastInterim = '';
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (SpeechRecognition) {
@@ -258,6 +260,8 @@
     recognition.lang = 'en-US';
 
     recognition.onstart = () => {
+      clearTimeout(_silenceTimer);
+      _lastInterim = '';
       state.isListening = true;
       playWakeChime();
       setState('listening', 'Listening to you...');
@@ -275,18 +279,38 @@
         }
       }
 
-      if (interimTranscript && DOM.captionText) {
-        DOM.captionText.textContent = `"${interimTranscript}"`;
-        if (orb) orb.setAmplitude(0.85);
+      if (interimTranscript) {
+        _lastInterim = interimTranscript;
+        if (DOM.captionText) {
+          DOM.captionText.textContent = `"${interimTranscript}"`;
+          if (orb) orb.setAmplitude(0.85);
+        }
+
+        // Auto-commit on natural conversational pause (800ms) without waiting for sluggish browser silence detection
+        clearTimeout(_silenceTimer);
+        _silenceTimer = setTimeout(() => {
+          if (_lastInterim && state.isListening) {
+            const queryToSend = _lastInterim.trim();
+            _lastInterim = '';
+            try { recognition.stop(); } catch (_) {}
+            state.isListening = false;
+            DOM.queryInput.value = queryToSend;
+            handleUserQuery(queryToSend);
+          }
+        }, 800);
       }
 
       if (finalTranscript) {
+        clearTimeout(_silenceTimer);
+        _lastInterim = '';
         DOM.queryInput.value = finalTranscript;
         handleUserQuery(finalTranscript);
       }
     };
 
     recognition.onerror = (event) => {
+      clearTimeout(_silenceTimer);
+      _lastInterim = '';
       console.warn('Speech recognition error:', event.error);
       state.isListening = false;
       if (event.error === 'not-allowed') {
@@ -299,6 +323,7 @@
     };
 
     recognition.onend = () => {
+      clearTimeout(_silenceTimer);
       state.isListening = false;
       if (state.currentState === 'listening') {
         setState('standby');
@@ -307,6 +332,8 @@
   }
 
   function toggleListening() {
+    clearTimeout(_silenceTimer);
+    _lastInterim = '';
     if (!SpeechRecognition) {
       appendAssistantMessage("Speech recognition is not supported in this browser. You can type your request in the box below.");
       return;
@@ -431,19 +458,22 @@
     let text = buffer;
 
     while (text.length > 0) {
-      // Punctuation (. ! ? ;) followed by whitespace or newline
-      const match = text.match(/^([\s\S]*?[.?!;]+)(?:\s+|\n+)([\s\S]*)$/);
+      // Punctuation (. ! ? ;) followed by whitespace, newline, or closing quotes
+      const match = text.match(/^([\s\S]*?[A-Za-z0-9][.?!;]+["')\]]?)(?:\s+|\n+)([\s\S]*)$/);
       if (match) {
         const sentence = match[1].trim();
-        if (sentence) toSpeak.push(sentence);
-        text = match[2];
-        continue;
+        // Avoid breaking on common abbreviations
+        if (!sentence.match(/\b(?:e\.g|i\.e|mr|mrs|dr|vs|prof|etc)\.$/i)) {
+          if (sentence) toSpeak.push(sentence);
+          text = match[2];
+          continue;
+        }
       }
 
-      // Early break for long sentences (> 100 chars) at a comma, semicolon, or dash
-      if (text.length > 100) {
-        const clauseMatch = text.match(/^([\s\S]*?[,:;—])\s+([\s\S]*)$/);
-        if (clauseMatch && clauseMatch[1].trim().length > 30) {
+      // Early break for natural conversational clauses (comma, semicolon, colon, dash) for fast perceived response
+      if (text.length > 50) {
+        const clauseMatch = text.match(/^([\s\S]*?[A-Za-z0-9][,;:\—])\s+([\s\S]*)$/);
+        if (clauseMatch && clauseMatch[1].trim().length >= 25) {
           toSpeak.push(clauseMatch[1].trim());
           text = clauseMatch[2];
           continue;
@@ -506,7 +536,7 @@
         try {
           const utt = new SpeechSynthesisUtterance(text);
           utt.lang = 'en-GB';
-          utt.rate = 1.02;
+          utt.rate = 1.08; // Snappy, effortless natural assistant pace
           utt.pitch = 1.0;
           const best = pickBestVoice();
           if (best) utt.voice = best;

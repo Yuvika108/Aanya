@@ -39,6 +39,7 @@ app = FastAPI(title="Aanya API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -301,11 +302,14 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     print(f"\n🚀 Aanya starting on http://localhost:{port}")
     print(f"📖 Docs: http://localhost:{port}/docs\n")
+    reload_enabled = os.getenv("RELOAD", "false").lower() in ("true", "1", "yes")
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=port,
-        reload=True,
+        reload=reload_enabled,
+        reload_excludes=["*.json", "server/data/*", "*/server/data/*", "data/*", "*.log", ".pytest_cache/*", "__pycache__/*"],
+        reload_dirs=["server", "static"] if reload_enabled else None,
         # Increase timeouts so long Gemini calls don't get cut off by uvicorn
         timeout_keep_alive=60,
     )

@@ -10,6 +10,8 @@ Aanya learns from every conversation:
 """
 
 import os
+import sys
+import subprocess
 import re
 import json
 import base64
@@ -146,7 +148,19 @@ def _match_site_intent(query: str, custom_links: list[dict] | None = None):
                 "reply": f"Searching Wikipedia for '{target}'!",
             }
 
-    # 2. Exclude drafting / sending emails or asking questions about sites
+    li_search = re.search(r"^(?:search(?:\s+for)?\s+(.+)\s+on\s+linkedin|search\s+(?:on\s+)?linkedin\s+for\s+(.+)|linkedin\s+search(?:\s+for)?\s+(.+))$", q)
+    if li_search:
+        target = (li_search.group(1) or li_search.group(2) or li_search.group(3) or "").strip()
+        if target:
+            return {
+                "name": "LinkedIn",
+                "url": f"https://www.linkedin.com/search/results/all/?keywords={urllib.parse.quote(target)}",
+                "reply": f"Searching LinkedIn for '{target}'!",
+            }
+
+    # 2. Exclude closing tabs, drafting / sending emails or asking questions about sites
+    if re.search(r"^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?(?:close|shut|exit)\b", q):
+        return None
     if re.search(r"\b(?:draft|write|compose|send|create)\s+(?:an?\s+)?(?:email|mail|message)\b", q):
         return None
     if any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "how do ", "why is ", "tell me about ", "explain ", "can you explain ")):
@@ -187,6 +201,121 @@ def _match_site_intent(query: str, custom_links: list[dict] | None = None):
                 return rule
 
     return None
+
+
+def _match_close_tab_intent(query: str, custom_links: list[dict] | None = None):
+    """Match voice and text commands to close browser tabs (e.g. 'Close Github', 'Close tab')."""
+    q = query.lower().strip()
+    if re.search(r"\b(?:music|song|player)\b", q):
+        return None
+    if re.search(r"\b(?:drawer|modal|dialog|popup|sidebar|chat)\b", q):
+        return None
+    if any(q.startswith(w) for w in ("what is ", "who is ", "how to ", "how do ", "why is ", "tell me ")):
+        return None
+
+    close_match = re.search(
+        r"^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?"
+        r"(?:close|shut(?:\s+down)?|exit)\s+(?:the\s+)?(?:browser\s+tab(?:\s+for|\s+of)?|tab(?:\s+for|\s+of)?|browser\s+window(?:\s+for|\s+of)?|window(?:\s+for|\s+of)?|page(?:\s+for|\s+of)?)?\s*(.+)?$",
+        q,
+    )
+    if not close_match:
+        return None
+
+    raw_target = (close_match.group(1) or "").strip().strip(".,!?:'\"")
+    target = re.sub(r"^(?:for|of|the|active|current|this)\s+", "", raw_target).strip()
+    target = re.sub(r"\s+(?:tab|browser tab|window|page)$", "", target).strip()
+
+    if not target or target in ("tab", "browser tab", "window", "browser window", "this", "it", "active", "current"):
+        return {
+            "name": "active tab",
+            "target": "active",
+            "url_pattern": None,
+            "reply": "Closing the active browser tab.",
+        }
+
+    # Match custom links
+    if custom_links:
+        for cl in custom_links:
+            name = (cl.get("name") or "").strip().lower()
+            if target == name or re.search(rf"\b{re.escape(name)}\b", target):
+                return {
+                    "name": cl.get("name", target),
+                    "target": target,
+                    "url_pattern": cl.get("url"),
+                    "reply": f"Closing {cl.get('name')} tab.",
+                }
+
+    # Match standard site rules
+    for rule in SITE_RULES:
+        for alias in rule["aliases"]:
+            if target == alias or re.search(rf"\b{re.escape(alias)}\b", target):
+                return {
+                    "name": rule["name"],
+                    "target": alias,
+                    "url_pattern": rule["url"],
+                    "reply": f"Closing {rule['name']} tab.",
+                }
+
+    if len(target.split()) <= 3:
+        return {
+            "name": target.capitalize(),
+            "target": target,
+            "url_pattern": None,
+            "reply": f"Closing {target.capitalize()} tab.",
+        }
+
+    return None
+
+
+def _close_browser_tab(target_name: str, url_pattern: str | None = None):
+    """Close matching browser tab in Google Chrome or Safari on macOS."""
+    if sys.platform != "darwin":
+        return
+
+    pattern = (url_pattern or target_name).lower().replace(" ", "")
+    is_active = target_name.lower() in ("active", "active tab", "current", "this", "tab")
+
+    # 1. Google Chrome
+    try:
+        if is_active:
+            script = 'tell application "Google Chrome" to close active tab of front window'
+        else:
+            script = f'''tell application "Google Chrome"
+                repeat with w in windows
+                    set tabList to (tabs of w)
+                    repeat with t in tabList
+                        set tabUrl to (URL of t as string)
+                        set tabTitle to (title of t as string)
+                        if (tabUrl contains "{pattern}") or (tabTitle contains "{target_name}") or (tabUrl contains "{target_name.lower()}") then
+                            close t
+                        end if
+                    end repeat
+                end repeat
+            end tell'''
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=1.5)
+    except Exception:
+        pass
+
+    # 2. Safari
+    try:
+        if is_active:
+            script = 'tell application "Safari" to close current tab of front window'
+        else:
+            script = f'''tell application "Safari"
+                repeat with w in windows
+                    set tabList to (tabs of w)
+                    repeat with t in tabList
+                        set tabUrl to (URL of t as string)
+                        set tabTitle to (name of t as string)
+                        if (tabUrl contains "{pattern}") or (tabTitle contains "{target_name}") or (tabUrl contains "{target_name.lower()}") then
+                            close t
+                        end if
+                    end repeat
+                end repeat
+            end tell'''
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=1.5)
+    except Exception:
+        pass
 
 CURATED_SONGS = {
     "bohemian rhapsody": ("Bohemian Rhapsody", "Queen", "fJ9rUzIMcZQ"),
@@ -913,7 +1042,7 @@ class AanyaEngine:
     # ── Music & Song Playback (Always Plays From YouTube with Instant Autoplay) ─
 
     def _parse_song_intent(self, query: str) -> dict | None:
-        """Parse Alexa-style song playback and recommendation requests.
+        """Parse Aanya Music song playback and recommendation requests.
         Always plays the song directly from YouTube upon opening.
         """
         q = query.lower().strip()
@@ -1010,7 +1139,7 @@ class AanyaEngine:
         q = query.lower().strip()
         now = datetime.datetime.now()
 
-        # 1. Alexa-style song playback and recommendations
+        # 1. Aanya Music song playback and recommendations
         song_info = self._parse_song_intent(query)
         if song_info:
             return {
@@ -1025,15 +1154,30 @@ class AanyaEngine:
                 "status": "done",
             }
 
-        # 2. Alexa music pause / resume
+        # 2. Aanya Music pause / resume
         if re.search(r"\b(?:stop|pause)\s+(?:music|song|the\s+music|the\s+song)\b", q):
             return {"reply": "Music paused.", "action": "pause-music", "action_data": None, "status": "done"}
 
         if re.search(r"\b(?:resume|continue|unpause)\s+(?:music|song|the\s+music|the\s+song)\b", q):
             return {"reply": "Resuming music.", "action": "resume-music", "action_data": None, "status": "done"}
 
-        # 3. Direct website & search intent (including user custom links)
+        # 3. Close browser tab intent
         custom_links = self.get_links()
+        close_info = _match_close_tab_intent(query, custom_links=custom_links)
+        if close_info:
+            _close_browser_tab(close_info["target"], close_info.get("url_pattern"))
+            return {
+                "reply": close_info["reply"],
+                "action": "close-tab",
+                "action_data": {
+                    "site": close_info["name"],
+                    "target": close_info["target"],
+                    "url_pattern": close_info.get("url_pattern"),
+                },
+                "status": "done",
+            }
+
+        # 3.2. Direct website & search intent (including user custom links)
         matched_site = _match_site_intent(query, custom_links=custom_links)
         if matched_site:
             reply_text = matched_site.get("reply") or f"Opening {matched_site['name']} for you!"

@@ -6,8 +6,8 @@ Music Playback, Dynamic Temporal Grounding, and Passive Learning.
 import os
 import shutil
 import pytest
-from server.engine import AanyaEngine, _match_site_intent, DEFAULT_MEMORY
-from main import AanyaEngine as MainEngine, _match_site_intent as main_match_site_intent
+from server.engine import AanyaEngine, _match_site_intent, _match_close_tab_intent, DEFAULT_MEMORY
+from main import AanyaEngine as MainEngine, _match_site_intent as main_match_site_intent, _match_close_tab_intent as main_match_close_tab_intent
 
 TEST_SESSION = "test_assistant_eval"
 
@@ -330,6 +330,18 @@ def test_main_py_engine_consistency():
     assert site is not None
     assert "google.com/search?q=" in site["url"]
 
+    # LinkedIn search in main.py
+    li_site = main_match_site_intent("Search LinkedIn for AI/ML internships")
+    assert li_site is not None
+    assert li_site["name"] == "LinkedIn"
+    assert "linkedin.com/search/results/all/?keywords=" in li_site["url"]
+
+    # Close tab intent in main.py
+    c_tab = main_match_close_tab_intent("Close Github")
+    assert c_tab is not None
+    assert c_tab["name"] == "GitHub"
+
+
     # Platforms in main.py
     for q, domain in [
         ("open codolio", "codolio.com"),
@@ -341,3 +353,81 @@ def test_main_py_engine_consistency():
         m = main_match_site_intent(q)
         assert m is not None, f"Expected main.py match for: {q}"
         assert domain in m["url"]
+
+
+def test_linkedin_search_intent():
+    engine = AanyaEngine(session_id=TEST_SESSION, api_key="fake-key-for-unit-test")
+
+    # 1. Direct query requested by user: "Search LinkedIn for AI/ML internships"
+    res = engine._handle_instant_command("Search LinkedIn for AI/ML internships")
+    assert res is not None
+    assert res["action"] == "open-url"
+    assert "linkedin.com/search/results/all/?keywords=" in res["action_data"]
+    assert "ai/ml" in res["action_data"].lower()
+    assert "ai/ml internships" in res["reply"].lower()
+
+    # 2. Variants of LinkedIn search
+    queries = [
+        ("search on linkedin for python developer", "python%20developer"),
+        ("search linkedin for data science", "data%20science"),
+        ("linkedin search for software engineer", "software%20engineer"),
+        ("linkedin search deep learning", "deep%20learning"),
+    ]
+    for q, encoded in queries:
+        m = _match_site_intent(q)
+        assert m is not None, f"Expected match for: {q}"
+        assert m["name"] == "LinkedIn"
+        assert "linkedin.com/search/results/all/?keywords=" in m["url"]
+        assert encoded in m["url"].lower()
+
+    # Exclusions: standard open linkedin should open home, not search
+    open_li = _match_site_intent("open linkedin")
+    assert open_li is not None
+    assert open_li["url"] == "https://www.linkedin.com"
+    assert "search" not in open_li["url"]
+
+
+def test_close_browser_tab_intent():
+    engine = AanyaEngine(session_id=TEST_SESSION, api_key="fake-key-for-unit-test")
+
+    # 1. Close specific tabs (e.g. "Close Github")
+    res = engine._handle_instant_command("Close Github")
+    assert res is not None
+    assert res["action"] == "close-tab"
+    assert res["action_data"]["site"] == "GitHub"
+    assert "Closing GitHub tab." in res["reply"]
+
+    # 2. Case and polite variants
+    for q in [
+        "close github",
+        "close the github tab",
+        "can you please close github?",
+        "close the tab for github",
+    ]:
+        c = engine._handle_instant_command(q)
+        assert c is not None, f"Expected close tab match for: {q}"
+        assert c["action"] == "close-tab"
+        assert c["action_data"]["site"] == "GitHub"
+
+    # 3. Other known sites
+    for site, name in [("linkedin", "LinkedIn"), ("youtube", "YouTube"), ("spotify", "Spotify")]:
+        c = engine._handle_instant_command(f"close {site}")
+        assert c is not None, f"Expected close tab match for: close {site}"
+        assert c["action"] == "close-tab"
+        assert c["action_data"]["site"] == name
+
+    # 4. Generic active tab
+    for q in ["close tab", "close browser tab", "close active tab", "close this tab"]:
+        c = engine._handle_instant_command(q)
+        assert c is not None, f"Expected active tab match for: {q}"
+        assert c["action"] == "close-tab"
+        assert c["action_data"]["target"] == "active"
+
+    # 5. Exclusions
+    for q in [
+        "how to close a deal",
+        "what is github",
+        "pause music",
+    ]:
+        m = _match_close_tab_intent(q)
+        assert m is None, f"Query '{q}' should NOT match close tab intent!"

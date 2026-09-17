@@ -7,6 +7,16 @@
 (() => {
   'use strict';
 
+  // ── Backend API Base Resolution ────────────────────────────────────────────
+  // Automatically routes to FastAPI backend on http://localhost:8000 when opened via
+  // file:// or alternative local dev ports (e.g. VS Code Live Server on 5500, Vite 5173).
+  const API_BASE = (() => {
+    if (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '8000')) {
+      return 'http://localhost:8000';
+    }
+    return '';
+  })();
+
   // ── State & Config ──────────────────────────────────────────────────────────
   const state = {
     sessionId: localStorage.getItem('aanya_session_id') || 'default',
@@ -89,8 +99,9 @@
     memInterestsTags: document.getElementById('memInterestsTags'),
     emptyInterestsNotice: document.getElementById('emptyInterestsNotice'),
     clearMemoryBtn: document.getElementById('clearMemoryBtn'),
-    // Alexa Music Player references
-    alexaMusicDock: document.getElementById('alexaMusicDock'),
+    // Aanya Music Player references
+    aanyaMusicDock: document.getElementById('aanyaMusicDock') || document.getElementById('alexaMusicDock'),
+    alexaMusicDock: document.getElementById('aanyaMusicDock') || document.getElementById('alexaMusicDock'),
     musicDockArt: document.getElementById('musicDockArt'),
     musicEqualizer: document.getElementById('musicEqualizer'),
     musicDockTitle: document.getElementById('musicDockTitle'),
@@ -100,7 +111,8 @@
     musicMuteIcon: document.getElementById('musicMuteIcon'),
     musicOpenExternalBtn: document.getElementById('musicOpenExternalBtn'),
     musicCloseBtn: document.getElementById('musicCloseBtn'),
-    alexaMusicIframe: document.getElementById('alexaMusicIframe')
+    aanyaMusicIframe: document.getElementById('aanyaMusicIframe') || document.getElementById('alexaMusicIframe'),
+    alexaMusicIframe: document.getElementById('aanyaMusicIframe') || document.getElementById('alexaMusicIframe')
   };
 
   // ── Initialize Orb Visualizer ──────────────────────────────────────────────
@@ -566,7 +578,7 @@
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
 
-      fetch('/tts', {
+      fetch(`${API_BASE}/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -932,7 +944,19 @@
       }
     }
 
-    // 2. Exclude drafting/writing emails or conversational questions
+    const liMatch = q.match(/^(?:search(?:\s+for)?\s+(.+)\s+on\s+linkedin|search\s+(?:on\s+)?linkedin\s+for\s+(.+)|linkedin\s+search(?:\s+for)?\s+(.+))$/i);
+    if (liMatch) {
+      const target = (liMatch[1] || liMatch[2] || liMatch[3] || '').trim();
+      if (target) {
+        return { url: `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(target)}`, name: 'LinkedIn' };
+      }
+    }
+
+    // 2. Exclude close tab commands, drafting/writing emails or conversational questions
+    if (/^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?(?:close|shut|exit)\b/i.test(q)) {
+      return null;
+    }
+    // Exclude drafting/writing emails or conversational questions
     if (/\b(?:draft|write|compose|send|create)\s+(?:an?\s+)?(?:email|mail|message)\b/i.test(q)) {
       return null;
     }
@@ -1005,7 +1029,65 @@
     'tauba tauba': { title: 'Tauba Tauba', artist: 'Karan Aujla', vid: 'lk403dE0dG8' },
   };
 
-  // ── Alexa Music Player Controller ─────────────────────────────────────────
+  // ── Browser Tab Manager ──────────────────────────────────────────────────
+  const _openedWindows = new Map();
+  const _recentWindows = [];
+
+  function trackOpenedWindow(url, name, win) {
+    if (!win) return;
+    _recentWindows.push(win);
+    if (name) {
+      _openedWindows.set(name.toLowerCase().trim(), win);
+    }
+    if (url) {
+      try {
+        const u = new URL(url);
+        _openedWindows.set(u.hostname.toLowerCase(), win);
+        const parts = u.hostname.split('.');
+        if (parts.length > 1) {
+          _openedWindows.set(parts[parts.length - 2].toLowerCase(), win);
+        }
+      } catch (_) {
+        _openedWindows.set(url.toLowerCase().trim(), win);
+      }
+    }
+  }
+
+  function closeBrowserTab(target) {
+    const t = (target || '').toLowerCase().trim();
+    // If active / generic or empty, close most recent opened tab
+    if (!t || t === 'active' || t === 'tab' || t === 'browser tab' || t === 'current' || t === 'this') {
+      while (_recentWindows.length > 0) {
+        const win = _recentWindows.pop();
+        if (win && !win.closed) {
+          try { win.close(); } catch (_) {}
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Try finding by name or domain key
+    for (const [key, win] of _openedWindows.entries()) {
+      if ((key.includes(t) || t.includes(key)) && win && !win.closed) {
+        try { win.close(); } catch (_) {}
+        _openedWindows.delete(key);
+        return true;
+      }
+    }
+
+    // Fallback: close most recent open tab
+    while (_recentWindows.length > 0) {
+      const win = _recentWindows.pop();
+      if (win && !win.closed) {
+        try { win.close(); } catch (_) {}
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ── Aanya Music Player Controller ─────────────────────────────────────────
   let _musicState = {
     isPlaying: false,
     isMuted: false,
@@ -1014,8 +1096,10 @@
     currentUrl: null,
   };
 
-  function playAlexaMusic(info) {
-    if (!DOM.alexaMusicDock || !info) return;
+  function playAanyaMusic(info) {
+    const dock = DOM.aanyaMusicDock || DOM.alexaMusicDock;
+    const iframe = DOM.aanyaMusicIframe || DOM.alexaMusicIframe;
+    if (!dock || !info) return;
     const videoId = info.video_id || info.videoId;
     if (!videoId) return;
 
@@ -1033,28 +1117,28 @@
     if (DOM.musicEqualizer) DOM.musicEqualizer.classList.add('is-playing');
     if (DOM.musicMuteIcon) DOM.musicMuteIcon.className = 'bi bi-volume-up-fill';
 
-    if (DOM.alexaMusicIframe) {
-      DOM.alexaMusicIframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&playsinline=1`;
+    if (iframe) {
+      iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&enablejsapi=1&playsinline=1`;
     }
 
-    DOM.alexaMusicDock.style.display = 'block';
+    dock.style.display = 'block';
   }
 
-  function pauseAlexaMusic() {
+  function pauseAanyaMusic() {
     _musicState.isPlaying = false;
     if (DOM.musicEqualizer) DOM.musicEqualizer.classList.remove('is-playing');
     if (DOM.musicPlayPauseIcon) DOM.musicPlayPauseIcon.className = 'bi bi-play-fill';
     _sendIframeCommand('pauseVideo');
   }
 
-  function resumeAlexaMusic() {
+  function resumeAanyaMusic() {
     _musicState.isPlaying = true;
     if (DOM.musicEqualizer) DOM.musicEqualizer.classList.add('is-playing');
     if (DOM.musicPlayPauseIcon) DOM.musicPlayPauseIcon.className = 'bi bi-pause-fill';
     _sendIframeCommand('playVideo');
   }
 
-  function toggleAlexaMusicPlayPause() {
+  function toggleAanyaMusicPlayPause() {
     if (_musicState.isPlaying) {
       pauseAlexaMusic();
     } else {
@@ -1062,7 +1146,7 @@
     }
   }
 
-  function toggleAlexaMusicMute() {
+  function toggleAanyaMusicMute() {
     _musicState.isMuted = !_musicState.isMuted;
     if (_musicState.isMuted) {
       if (DOM.musicMuteIcon) DOM.musicMuteIcon.className = 'bi bi-volume-mute-fill';
@@ -1073,11 +1157,13 @@
     }
   }
 
-  function closeAlexaMusic() {
+  function closeAanyaMusic() {
+    const dock = DOM.aanyaMusicDock || DOM.alexaMusicDock;
+    const iframe = DOM.aanyaMusicIframe || DOM.alexaMusicIframe;
     _musicState.isPlaying = false;
     _sendIframeCommand('stopVideo');
-    if (DOM.alexaMusicIframe) DOM.alexaMusicIframe.src = '';
-    if (DOM.alexaMusicDock) DOM.alexaMusicDock.style.display = 'none';
+    if (DOM.alexaMusicIframe) iframe.src = '';
+    if (dock) dock.style.display = 'none';
   }
 
   function _sendIframeCommand(func) {
@@ -1091,7 +1177,7 @@
     } catch (e) {}
   }
 
-  function speakAlexaConfirmation(msg) {
+  function speakAanyaConfirmation(msg) {
     if (!state.voiceEnabled) return;
     try {
       if ('speechSynthesis' in window) {
@@ -1106,6 +1192,20 @@
       console.warn('Spoken confirmation failed:', e);
     }
   }
+
+  // Backwards-compatibility aliases
+  const playAlexaMusic = playAanyaMusic;
+  const pauseAlexaMusic = pauseAanyaMusic;
+  const resumeAlexaMusic = resumeAanyaMusic;
+  const closeAlexaMusic = closeAanyaMusic;
+  const toggleAlexaMusicPlayPause = toggleAanyaMusicPlayPause;
+  const toggleAlexaMusicMute = toggleAanyaMusicMute;
+  const speakAlexaConfirmation = speakAanyaConfirmation;
+  window.playAanyaMusic = playAanyaMusic;
+  window.pauseAanyaMusic = pauseAanyaMusic;
+  window.resumeAanyaMusic = resumeAanyaMusic;
+  window.closeAanyaMusic = closeAanyaMusic;
+
 
   function getMusicPlaybackIntent(rawText) {
     const q = rawText.toLowerCase().trim();
@@ -1213,26 +1313,27 @@
 
     if (!text && attachments.length === 0) return;
 
-    // ── Immediate Alexa/Siri/Jarvis voice action handling
+    // ── Immediate Aanya voice action handling (Music, Sites, Tab Closing)
     if (text && attachments.length === 0) {
       _lastSynchronouslyOpenedUrl = null;
       const musicIntent = getMusicPlaybackIntent(text);
       if (musicIntent) {
         if (musicIntent.action === 'pause') {
-          pauseAlexaMusic();
-          speakAlexaConfirmation('Music paused.');
+          pauseAanyaMusic();
+          speakAanyaConfirmation('Music paused.');
         } else if (musicIntent.action === 'resume') {
-          resumeAlexaMusic();
-          speakAlexaConfirmation('Resuming music.');
+          resumeAanyaMusic();
+          speakAanyaConfirmation('Resuming music.');
         } else {
-          // Always play via Alexa YouTube player dock
+          // Always play via Aanya YouTube player dock
           if (musicIntent.videoId) {
-            playAlexaMusic({ song: musicIntent.song, videoId: musicIntent.videoId, url: musicIntent.url });
+            playAanyaMusic({ song: musicIntent.song, videoId: musicIntent.videoId, url: musicIntent.url });
           } else {
             _lastSynchronouslyOpenedUrl = musicIntent.url;
-            window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+            const w = window.open(musicIntent.url, '_blank', 'noopener,noreferrer');
+            trackOpenedWindow(musicIntent.url, musicIntent.song, w);
           }
-          speakAlexaConfirmation(`Playing ${musicIntent.song} on YouTube.`);
+          speakAanyaConfirmation(`Playing ${musicIntent.song} on YouTube.`);
         }
       } else {
         const siteMatch = getSiteOpenUrl(text);
@@ -1241,11 +1342,21 @@
           const siteName = siteMatch.name || 'link';
           _lastSynchronouslyOpenedUrl = siteUrl;
           try {
-            window.open(siteUrl, '_blank', 'noopener,noreferrer');
+            const w = window.open(siteUrl, '_blank', 'noopener,noreferrer');
+            trackOpenedWindow(siteUrl, siteName, w);
           } catch (e) {
             console.warn('Window open restricted:', e);
           }
-          speakAlexaConfirmation(`Opening ${siteName} for you.`);
+          speakAanyaConfirmation(`Opening ${siteName} for you.`);
+        } else {
+          // Close browser tab intent
+          const closeMatch = text.match(/^(?:(?:can|could|would)\s+you\s+(?:please\s+)?|please\s+)?(?:close|shut(?:\s+down)?|exit)\s+(?:the\s+)?(?:browser\s+tab(?:\s+for|\s+of)?|tab(?:\s+for|\s+of)?|browser\s+window(?:\s+for|\s+of)?|window(?:\s+for|\s+of)?|page(?:\s+for|\s+of)?)?\s*(.+)?$/i);
+          if (closeMatch && !text.match(/\b(?:music|song|player|drawer|modal|dialog|sidebar|chat)\b/i)) {
+            let rawT = (closeMatch[1] || '').trim().replace(/^[.,?!'"]+|[.,?!'"]+$/g, '');
+            let cleanT = rawT.replace(/^(?:for|of|the|active|current|this)\s+/i, '').replace(/\s+(?:tab|browser tab|window|page)$/i, '').trim();
+            closeBrowserTab(cleanT || 'active');
+            speakAanyaConfirmation(`Closing ${cleanT || 'tab'}.`);
+          }
         }
       }
     }
@@ -1330,7 +1441,7 @@
 
       setState('thinking', hasAttachments ? 'Analysing your files…' : 'Thinking...');
 
-      fetch('/chat/stream', {
+      fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1365,13 +1476,13 @@
                 if (packet.action) finalAction = packet.action;
                 if (packet.action_data) finalData = packet.action_data;
                 if (packet.action === 'play-music' && packet.action_data) {
-                  playAlexaMusic(packet.action_data);
+                  playAanyaMusic(packet.action_data);
                 }
                 if (packet.action === 'pause-music') {
-                  pauseAlexaMusic();
+                  pauseAanyaMusic();
                 }
                 if (packet.action === 'resume-music') {
-                  resumeAlexaMusic();
+                  resumeAanyaMusic();
                 }
                 continue;
               } else if (packet.type === 'token') {
@@ -1434,12 +1545,16 @@
           }
 
           // Side-effects
-          if (finalAction === 'play-music' && finalData) playAlexaMusic(finalData);
-          if (finalAction === 'pause-music') pauseAlexaMusic();
-          if (finalAction === 'resume-music') resumeAlexaMusic();
+          if (finalAction === 'play-music' && finalData) playAanyaMusic(finalData);
+          if (finalAction === 'pause-music') pauseAanyaMusic();
+          if (finalAction === 'resume-music') resumeAanyaMusic();
+          if (finalAction === 'close-tab') {
+            const t = typeof finalData === 'object' ? (finalData?.target || finalData?.site) : finalData;
+            closeBrowserTab(t);
+          }
           if (finalAction === 'open-url' && finalData) {
             if (finalData !== _lastSynchronouslyOpenedUrl) {
-              try { window.open(finalData, '_blank'); } catch (_) {}
+              try { const w = window.open(finalData, '_blank'); trackOpenedWindow(finalData, null, w); } catch (_) {}
             }
             const openPill = document.createElement('div');
             openPill.style.marginTop = '10px';
@@ -1471,12 +1586,17 @@
    * Non-streaming fallback — plain JSON /chat endpoint.
    */
   async function chatViaFetch(payload) {
+    // Instantiate fresh controller so any aborted stream signal doesn't cancel this fallback
+    const fetchCtrl = new AbortController();
+    _chatAbortCtrl = fetchCtrl;
+    const timeoutId = setTimeout(() => fetchCtrl.abort(), 45000);
+
     try {
-      const res = await fetch('/chat', {
+      const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: _chatAbortCtrl?.signal,
+        signal: fetchCtrl.signal,
       });
       if (!res.ok) {
         const detail = await res.json().catch(() => ({}));
@@ -1486,12 +1606,19 @@
       const reply = data.reply || "I didn't receive a response.";
       appendAssistantMessage(reply, data.action, data.action_data);
       speakResponse(reply);
-      if (data.action === 'play-music' && data.action_data) playAlexaMusic(data.action_data);
-      if (data.action === 'pause-music') pauseAlexaMusic();
-      if (data.action === 'resume-music') resumeAlexaMusic();
+      if (data.action === 'play-music' && data.action_data) playAanyaMusic(data.action_data);
+      if (data.action === 'pause-music') pauseAanyaMusic();
+      if (data.action === 'resume-music') resumeAanyaMusic();
+      if (data.action === 'close-tab') {
+        const t = typeof data.action_data === 'object' ? (data.action_data?.target || data.action_data?.site) : data.action_data;
+        closeBrowserTab(t);
+      }
       if (data.action === 'open-url' && data.action_data) {
         if (data.action_data !== _lastSynchronouslyOpenedUrl) {
-          try { window.open(data.action_data, '_blank'); } catch (_) {}
+          try {
+            const w = window.open(data.action_data, '_blank');
+            trackOpenedWindow(data.action_data, null, w);
+          } catch (_) {}
         }
       }
       _lastSynchronouslyOpenedUrl = null;
@@ -1505,12 +1632,16 @@
       if (payload.message?.toLowerCase().match(/link/)) loadLinks();
     } catch (err) {
       if (err.name !== 'AbortError') console.error('Chat error:', err);
-      appendAssistantMessage(
-        err.name === 'AbortError'
-          ? 'Request cancelled — please try again.'
-          : `Sorry, I ran into an issue: ${err.message}`
-      );
+      let errMsg = `Sorry, I ran into an issue: ${err.message}`;
+      if (err.name === 'AbortError') {
+        errMsg = 'Request cancelled — please try again.';
+      } else if (!err.message || err.message.toLowerCase().includes('failed to fetch')) {
+        errMsg = "I couldn't connect to the Aanya backend server. Please ensure the backend is running (e.g. 'python app.py' on http://localhost:8000).";
+      }
+      appendAssistantMessage(errMsg);
       setState('standby');
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -1578,7 +1709,7 @@
   // ── Quick Links Controller ────────────────────────────────────────────────
   async function loadLinks() {
     try {
-      const response = await fetch(`/links/${encodeURIComponent(state.sessionId)}`);
+      const response = await fetch(`${API_BASE}/links/${encodeURIComponent(state.sessionId)}`);
       if (!response.ok) return;
       const data = await response.json();
       state.customLinks = data.links || [];
@@ -1597,7 +1728,7 @@
       cleanUrl = 'https://' + cleanUrl;
     }
     try {
-      const response = await fetch('/links', {
+      const response = await fetch(`${API_BASE}/links`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1623,7 +1754,7 @@
 
   async function deleteCustomLink(linkId) {
     try {
-      const response = await fetch(`/links/${encodeURIComponent(linkId)}?session_id=${encodeURIComponent(state.sessionId)}`, {
+      const response = await fetch(`${API_BASE}/links/${encodeURIComponent(linkId)}?session_id=${encodeURIComponent(state.sessionId)}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -1682,7 +1813,7 @@
   // ── Task Management Drawer ─────────────────────────────────────────────────
   async function loadTasks() {
     try {
-      const response = await fetch(`/tasks/${encodeURIComponent(state.sessionId)}`);
+      const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(state.sessionId)}`);
       if (!response.ok) return;
       const data = await response.json();
       state.tasks = data.tasks || [];
@@ -1695,7 +1826,7 @@
   async function addTask(taskText) {
     if (!taskText.trim()) return;
     try {
-      const response = await fetch(`/tasks/${encodeURIComponent(state.sessionId)}`, {
+      const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(state.sessionId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1718,7 +1849,7 @@
   async function deleteTask(index) {
     try {
       // API task_number is 1-indexed
-      const response = await fetch(`/tasks/${encodeURIComponent(state.sessionId)}/${index + 1}`, {
+      const response = await fetch(`${API_BASE}/tasks/${encodeURIComponent(state.sessionId)}/${index + 1}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -1768,7 +1899,7 @@
   // ── Adaptive Memory & Self-Improvement Controller ──────────────────────────
   async function submitFeedback(positive, lastReply, correction = '') {
     try {
-      const response = await fetch('/feedback', {
+      const response = await fetch(`${API_BASE}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1790,7 +1921,7 @@
 
   async function loadMemory() {
     try {
-      const response = await fetch(`/memory/${encodeURIComponent(state.sessionId)}`);
+      const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(state.sessionId)}`);
       if (!response.ok) return;
       const data = await response.json();
       renderMemory(data);
@@ -1892,7 +2023,7 @@
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/memory/${encodeURIComponent(state.sessionId)}`, {
+      const response = await fetch(`${API_BASE}/memory/${encodeURIComponent(state.sessionId)}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -1948,10 +2079,10 @@
       }
     });
 
-    // ── Alexa Music Player Controls ──────────────────────────────────────────
-    DOM.musicPlayPauseBtn?.addEventListener('click', toggleAlexaMusicPlayPause);
-    DOM.musicMuteBtn?.addEventListener('click', toggleAlexaMusicMute);
-    DOM.musicCloseBtn?.addEventListener('click', closeAlexaMusic);
+    // ── Aanya Music Player Controls ──────────────────────────────────────────
+    DOM.musicPlayPauseBtn?.addEventListener('click', toggleAanyaMusicPlayPause);
+    DOM.musicMuteBtn?.addEventListener('click', toggleAanyaMusicMute);
+    DOM.musicCloseBtn?.addEventListener('click', closeAanyaMusic);
 
     // ── File Upload ──────────────────────────────────────────────────────────
     DOM.attachBtn?.addEventListener('click', () => {
@@ -2045,7 +2176,7 @@
         const site = tile.getAttribute('data-site');
         if (url) {
           speakAlexaConfirmation(`Opening ${site || 'link'} for you`);
-          window.open(url, '_blank');
+          const w = window.open(url, '_blank'); trackOpenedWindow(url, site, w);
         }
       });
     });

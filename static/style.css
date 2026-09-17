@@ -875,7 +875,8 @@ html, body {
   50%       { opacity: 0; }
 }
 
-/* ── Alexa-Style Floating Music Player Dock ──────────────────────────────── */
+/* ── Aanya Floating Music Player Dock ──────────────────────────────── */
+.aanya-music-dock,
 .alexa-music-dock {
   position: sticky;
   bottom: 80px;
@@ -1044,7 +1045,7 @@ html, body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .alexa-music-dock { animation: none !important; }
+  .aanya-music-dock, .alexa-music-dock { animation: none !important; }
   .music-equalizer.is-playing .eq-bar { animation: none !important; }
 }
 

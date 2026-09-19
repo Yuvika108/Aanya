@@ -16,6 +16,8 @@ import re
 import urllib.parse
 import urllib.request
 import functools
+import json
+from typing import Any
 import speech_recognition as sr
 
 try:
@@ -447,9 +449,8 @@ class AanyaEngine:
                 self.reset_chat(announce=False)
             except Exception as e:
                 print(f"[Warning] Failed to initialize Gemini client: {e}")
-                print(f"[Warning] Failed to initialize Gemini client: {e}")
 
-        self.recognizer = sr.Recognizer()
+        self.recognizer: Any = sr.Recognizer()
         self.recognizer.pause_threshold = 1
         self.recognizer.dynamic_energy_threshold = True
         self.recognizer.energy_threshold = 300
@@ -563,7 +564,7 @@ class AanyaEngine:
 
                 pcm_bytes = np.concatenate(recorded_frames).astype(np.int16).tobytes()
                 audio_data = sr.AudioData(pcm_bytes, sample_rate, 2)
-                return str(self.recognizer.recognize_google(audio_data, language="en-in"))
+                return str(self.recognizer.recognize_google(audio_data, language="en-in"))  # type: ignore[attr-defined]
 
         except (sr.WaitTimeoutError, sr.UnknownValueError):
             return "None"
@@ -585,7 +586,7 @@ class AanyaEngine:
                 self.recognizer.adjust_for_ambient_noise(source, duration=0.3)
                 audio = self.recognizer.listen(source, timeout=timeout,
                                                phrase_time_limit=phrase_time_limit)
-                return str(self.recognizer.recognize_google(audio, language="en-in"))
+                return str(self.recognizer.recognize_google(audio, language="en-in"))  # type: ignore[attr-defined]
         except (sr.WaitTimeoutError, sr.UnknownValueError):
             return "None"
         except sr.RequestError as e:

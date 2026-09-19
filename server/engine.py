@@ -847,6 +847,7 @@ class AanyaEngine:
                 part = types.Part.from_bytes(data=raw_bytes, mime_type=mime_type)
                 parts.append(part)
             except Exception as err:
+                # pyrefly: ignore [unbound-name]
                 print(f"Error processing attachment {filename}: {err}")
         return parts
 
@@ -891,6 +892,7 @@ class AanyaEngine:
         for model_name in models_to_try:
             try:
                 self._rebuild_session(preferred_model=model_name, history=history)
+                # pyrefly: ignore [missing-attribute]
                 response = self.chat_session.send_message(prompt)
                 reply = response.text or ""
                 self.active_model = model_name
@@ -940,6 +942,7 @@ class AanyaEngine:
         for model_name in models_to_try:
             try:
                 self._rebuild_session(preferred_model=model_name, history=history)
+                # pyrefly: ignore [missing-attribute]
                 response_stream = self.chat_session.send_message_stream(prompt)
 
                 first_chunk = next(response_stream, None)

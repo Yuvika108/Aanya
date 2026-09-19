@@ -1,22 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Aanya — Personal AI Voice Assistant</title>
-  <meta name="description" content="Aanya is a personal AI voice assistant with fluid voice recognition, adaptive memory, and smart task management — all in a beautiful pastel interface.">
+  <meta name="description"
+    content="Aanya is a personal AI voice assistant with fluid voice recognition, adaptive memory, and smart task management — all in a beautiful pastel interface.">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet">
 
   <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
   <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body class="theme-pastel">
+  <!-- Soft overlay so chat text, cards, and controls stay legible over the photo -->
+  <div class="app-bg-overlay" aria-hidden="true"></div>
 
   <!-- Ambient Glow Background -->
   <div class="ambient-glow" aria-hidden="true">
@@ -62,17 +69,20 @@
           <i class="bi bi-palette" aria-hidden="true"></i>
         </button>
 
-        <button id="linksToggleBtn" class="icon-btn links-btn" aria-label="Quick Links & Shortcuts" title="Quick Links & Shortcuts">
+        <button id="linksToggleBtn" class="icon-btn links-btn" aria-label="Quick Links & Shortcuts"
+          title="Quick Links & Shortcuts">
           <i class="bi bi-link-45deg" aria-hidden="true"></i>
           <span id="linkCountBadge" class="badge-count" aria-hidden="true">0</span>
         </button>
 
-        <button id="memoryToggleBtn" class="icon-btn memory-btn" aria-label="Aanya's Adaptive Memory" title="Adaptive Memory">
+        <button id="memoryToggleBtn" class="icon-btn memory-btn" aria-label="Aanya's Adaptive Memory"
+          title="Adaptive Memory">
           <i class="bi bi-database" aria-hidden="true"></i>
           <span id="memoryCountBadge" class="badge-count" aria-hidden="true">0</span>
         </button>
 
-        <button id="tasksToggleBtn" class="icon-btn tasks-btn" aria-label="Open Tasks Panel" title="Reminders &amp; Tasks">
+        <button id="tasksToggleBtn" class="icon-btn tasks-btn" aria-label="Open Tasks Panel"
+          title="Reminders &amp; Tasks">
           <i class="bi bi-check2-square" aria-hidden="true"></i>
           <span id="taskCountBadge" class="badge-count" aria-hidden="true">0</span>
         </button>
@@ -95,7 +105,8 @@
           <div class="orb-pulse-ring ring-3" aria-hidden="true"></div>
 
           <!-- Center Trigger -->
-          <button id="orbCenterBtn" class="orb-center-trigger" aria-label="Toggle Voice Listening" title="Click to Speak">
+          <button id="orbCenterBtn" class="orb-center-trigger" aria-label="Toggle Voice Listening"
+            title="Click to Speak">
             <i class="bi bi-mic" aria-hidden="true"></i>
           </button>
         </div>
@@ -163,7 +174,8 @@
                 <time class="card-timestamp">Now</time>
               </header>
               <div class="card-content">
-                <p>Hi there! I'm Aanya, your personal voice assistant. You can speak naturally, type a message, or select a suggestion above. How can I help you today?</p>
+                <p>Hi there! I'm Aanya, your personal voice assistant. You can speak naturally, type a message, or
+                  select a suggestion above. How can I help you today?</p>
               </div>
             </div>
           </article>
@@ -172,7 +184,8 @@
     </main>
 
     <!-- Aanya Floating Music Player Dock -->
-    <section id="aanyaMusicDock" class="aanya-music-dock alexa-music-dock" style="display:none;" aria-label="Aanya Music Player">
+    <section id="aanyaMusicDock" class="aanya-music-dock alexa-music-dock" style="display:none;"
+      aria-label="Aanya Music Player">
       <div class="music-dock-inner">
         <div class="music-dock-media">
           <div class="music-art-wrapper">
@@ -197,10 +210,12 @@
           <button id="musicMuteBtn" type="button" class="music-btn" aria-label="Mute Audio" title="Mute / Unmute">
             <i id="musicMuteIcon" class="bi bi-volume-up-fill" aria-hidden="true"></i>
           </button>
-          <a id="musicOpenExternalBtn" href="#" target="_blank" rel="noopener noreferrer" class="music-btn external-link" aria-label="Open in YouTube" title="Open YouTube tab">
+          <a id="musicOpenExternalBtn" href="#" target="_blank" rel="noopener noreferrer"
+            class="music-btn external-link" aria-label="Open in YouTube" title="Open YouTube tab">
             <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
           </a>
-          <button id="musicCloseBtn" type="button" class="music-btn close-btn" aria-label="Stop Music & Close Player" title="Stop & Close">
+          <button id="musicCloseBtn" type="button" class="music-btn close-btn" aria-label="Stop Music & Close Player"
+            title="Stop & Close">
             <i class="bi bi-x-lg" aria-hidden="true"></i>
           </button>
         </div>
@@ -208,11 +223,7 @@
 
       <!-- Background direct audio/video iframe player with autoplay -->
       <div class="music-player-frame-wrapper" aria-hidden="true">
-        <iframe
-          id="aanyaMusicIframe"
-          title="Aanya Music Stream"
-          allow="autoplay; encrypted-media"
-          tabindex="-1">
+        <iframe id="aanyaMusicIframe" title="Aanya Music Stream" allow="autoplay; encrypted-media" tabindex="-1">
         </iframe>
       </div>
     </section>
@@ -220,35 +231,24 @@
     <!-- Bottom Input Dock -->
     <footer class="input-dock" role="region" aria-label="Voice &amp; Text Input">
       <form id="chatForm" class="dock-form" role="search" onsubmit="return false;">
-        <button id="dockMicBtn" type="button" class="dock-action-btn mic-btn" aria-label="Toggle Voice Input" title="Voice Input (M)">
+        <button id="dockMicBtn" type="button" class="dock-action-btn mic-btn" aria-label="Toggle Voice Input"
+          title="Voice Input (M)">
           <i class="bi bi-mic" aria-hidden="true"></i>
         </button>
 
         <div class="input-wrapper">
-          <input
-            type="text"
-            id="queryInput"
-            class="chat-text-input"
-            placeholder="Ask Aanya anything..."
-            autocomplete="off"
-            aria-label="Ask Aanya"
-          >
-          <div id="attachmentPreview" class="attachment-preview" aria-live="polite" aria-label="Queued attachments"></div>
+          <input type="text" id="queryInput" class="chat-text-input" placeholder="Ask Aanya anything..."
+            autocomplete="off" aria-label="Ask Aanya">
+          <div id="attachmentPreview" class="attachment-preview" aria-live="polite" aria-label="Queued attachments">
+          </div>
         </div>
 
         <!-- Hidden file input -->
-        <input
-          type="file"
-          id="fileInput"
-          multiple
-          accept="*/*"
-          style="display:none"
-          aria-hidden="true"
-          tabindex="-1"
-        >
+        <input type="file" id="fileInput" multiple accept="*/*" style="display:none" aria-hidden="true" tabindex="-1">
 
         <!-- Attach file button -->
-        <button id="attachBtn" type="button" class="dock-action-btn attach-btn" aria-label="Attach files" title="Attach files">
+        <button id="attachBtn" type="button" class="dock-action-btn attach-btn" aria-label="Attach files"
+          title="Attach files">
           <i class="bi bi-paperclip" aria-hidden="true"></i>
         </button>
 
@@ -256,7 +256,8 @@
           <i class="bi bi-send" aria-hidden="true"></i>
         </button>
 
-        <button id="voiceSpeakToggle" type="button" class="dock-action-btn tts-toggle active" aria-label="Toggle Voice Response" title="Voice Audio ON/OFF">
+        <button id="voiceSpeakToggle" type="button" class="dock-action-btn tts-toggle active"
+          aria-label="Toggle Voice Response" title="Voice Audio ON/OFF">
           <i class="bi bi-volume-up" aria-hidden="true"></i>
         </button>
       </form>
@@ -278,8 +279,10 @@
     <!-- Quick Add Link Form -->
     <form id="addLinkForm" class="drawer-add-form link-add-form" onsubmit="return false;">
       <div class="link-form-fields">
-        <input type="text" id="newLinkNameInput" class="drawer-input link-name-input" placeholder="Keyword (e.g. Portfolio)" aria-label="Link Keyword" required>
-        <input type="url" id="newLinkUrlInput" class="drawer-input link-url-input" placeholder="URL (e.g. https://yuvika.dev)" aria-label="Link URL" required>
+        <input type="text" id="newLinkNameInput" class="drawer-input link-name-input"
+          placeholder="Keyword (e.g. Portfolio)" aria-label="Link Keyword" required>
+        <input type="url" id="newLinkUrlInput" class="drawer-input link-url-input"
+          placeholder="URL (e.g. https://yuvika.dev)" aria-label="Link URL" required>
       </div>
       <button type="submit" class="drawer-submit-btn" aria-label="Save Link">Add</button>
     </form>
@@ -291,7 +294,8 @@
           <i class="bi bi-grid-fill" aria-hidden="true"></i> Voice Shortcuts
         </h3>
         <div class="builtin-shortcuts-grid">
-          <button type="button" class="shortcut-tile" data-site="Gmail" data-url="https://mail.google.com/mail/u/0/#inbox">
+          <button type="button" class="shortcut-tile" data-site="Gmail"
+            data-url="https://mail.google.com/mail/u/0/#inbox">
             <i class="bi bi-envelope-fill icon-gmail" aria-hidden="true"></i>
             <span class="shortcut-name">Gmail</span>
             <span class="shortcut-voice">"open gmail"</span>
@@ -380,7 +384,8 @@
 
     <!-- Quick Teach Form -->
     <form id="teachForm" class="drawer-add-form" onsubmit="return false;">
-      <input type="text" id="teachInput" class="drawer-input" placeholder="Teach Aanya (e.g. My name is Alex, I love tea)..." aria-label="Teach Aanya">
+      <input type="text" id="teachInput" class="drawer-input"
+        placeholder="Teach Aanya (e.g. My name is Alex, I love tea)..." aria-label="Teach Aanya">
       <button type="submit" class="drawer-submit-btn" aria-label="Teach">Teach</button>
     </form>
 
@@ -418,7 +423,8 @@
           <i class="bi bi-heart" aria-hidden="true"></i> Preferences &amp; Likes
         </h3>
         <ul id="memPreferencesList" class="memory-items-list" role="list"></ul>
-        <div id="emptyPreferencesNotice" class="memory-empty-text">No preferences learned yet. Tell Aanya "I like…" or "My favourite is…"</div>
+        <div id="emptyPreferencesNotice" class="memory-empty-text">No preferences learned yet. Tell Aanya "I like…" or
+          "My favourite is…"</div>
       </div>
 
       <!-- Rules -->
@@ -436,7 +442,8 @@
           <i class="bi bi-lightbulb" aria-hidden="true"></i> Learned Facts
         </h3>
         <ul id="memFactsList" class="memory-items-list" role="list"></ul>
-        <div id="emptyFactsNotice" class="memory-empty-text">No explicit facts taught yet. Tell Aanya "Learn this: …" or correct a mistake.</div>
+        <div id="emptyFactsNotice" class="memory-empty-text">No explicit facts taught yet. Tell Aanya "Learn this: …" or
+          correct a mistake.</div>
       </div>
 
       <!-- Interests -->
@@ -445,12 +452,14 @@
           <i class="bi bi-bookmark" aria-hidden="true"></i> Detected Interests
         </h3>
         <div id="memInterestsTags" class="tag-cloud"></div>
-        <div id="emptyInterestsNotice" class="memory-empty-text">No topics detected yet. Chat about technology, music, books, etc.</div>
+        <div id="emptyInterestsNotice" class="memory-empty-text">No topics detected yet. Chat about technology, music,
+          books, etc.</div>
       </div>
 
       <!-- Clear Memory -->
       <div class="memory-footer-actions">
-        <button id="clearMemoryBtn" type="button" class="danger-outline-btn" title="Reset all learned memory for this session">
+        <button id="clearMemoryBtn" type="button" class="danger-outline-btn"
+          title="Reset all learned memory for this session">
           <i class="bi bi-trash" aria-hidden="true"></i>
           Forget Everything (Reset Memory)
         </button>
@@ -471,7 +480,8 @@
       <div class="modal-body">
         <div class="setting-item">
           <label for="sessionIdInput" class="setting-label">Session ID</label>
-          <input type="text" id="sessionIdInput" class="setting-input" value="default" placeholder="e.g. default, workspace, user1">
+          <input type="text" id="sessionIdInput" class="setting-input" value="default"
+            placeholder="e.g. default, workspace, user1">
           <span class="setting-hint">Tasks and conversational memory are scoped to your session ID.</span>
         </div>
 
@@ -509,4 +519,5 @@
   <script src="/static/orb.js"></script>
   <script src="/static/app.js"></script>
 </body>
+
 </html>
